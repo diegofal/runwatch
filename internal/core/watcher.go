@@ -22,6 +22,8 @@ type GitHub interface {
 	Runs(ctx context.Context, repo, status string, limit int) ([]domain.Run, error)
 	Jobs(ctx context.Context, repo string, run domain.Run) ([]domain.Job, error)
 	JobLog(ctx context.Context, repo string, jobID int64) (string, error)
+	// RunnerLabels gives the labels of a repo's runners, by runner name.
+	RunnerLabels(ctx context.Context, repo string) (map[string][]string, error)
 	CancelRun(ctx context.Context, repo string, runID int64) error
 	RerunJob(ctx context.Context, repo string, jobID int64) error
 	RerunFailed(ctx context.Context, repo string, runID int64) error
@@ -78,6 +80,11 @@ const (
 	// localEvery and tailEvery pace the reads of the runners' own files.
 	localEvery = 2 * time.Second
 	tailEvery  = 300 * time.Millisecond
+	// labelsEvery is how often a repo's runner labels are read again: they
+	// change only when a runner is reconfigured. labelsRetry is the pause
+	// after a refused or failed read.
+	labelsEvery = time.Hour
+	labelsRetry = 10 * time.Minute
 )
 
 // Watcher holds the current Snapshot and keeps it fresh.
@@ -105,6 +112,11 @@ type repoState struct {
 	runs       map[int64]*runState
 	problem    *domain.Problem
 	backfilled bool
+	// labels are the repo's runners' labels by runner name, as last read;
+	// nil until a read succeeds. labelsNext is when to read them again.
+	labels        map[string][]string
+	labelsNext    time.Time
+	labelsProblem *domain.Problem
 }
 
 type runState struct {
@@ -225,6 +237,9 @@ func (w *Watcher) ScanLocal(ctx context.Context) bool {
 		}
 		// Sizes are measured rarely, by SetSizes; keep the last ones.
 		r.DiagBytes, r.WorkBytes = old.DiagBytes, old.WorkBytes
+		if rs := w.repos[r.Repo]; rs != nil {
+			r.Labels = rs.labels[r.Name] // nil when unread: Ours then falls back
+		}
 		w.followLocked(r)
 	}
 	w.runners = runners
@@ -322,10 +337,6 @@ func (w *Watcher) rebuildLocked() {
 // activeLocked gathers this machine's unfinished jobs from every repo,
 // oldest queued first, and the problems of the reads behind them.
 func (w *Watcher) activeLocked(usual func(*domain.Job)) ([]domain.Job, []domain.Problem) {
-	names := map[string]bool{}
-	for _, r := range w.runners {
-		names[r.Name] = true
-	}
 	active := []domain.Job{}
 	problems := []domain.Problem{}
 	if w.localErr != nil {
@@ -341,9 +352,12 @@ func (w *Watcher) activeLocked(usual func(*domain.Job)) ([]domain.Job, []domain.
 		if rs.problem != nil {
 			problems = append(problems, *rs.problem)
 		}
+		if rs.labelsProblem != nil {
+			problems = append(problems, *rs.labelsProblem)
+		}
 		for _, run := range rs.runs {
 			for _, j := range run.jobs {
-				if j.Status != domain.StatusCompleted && domain.Ours(j, names) {
+				if j.Status != domain.StatusCompleted && domain.Ours(j, w.runners) {
 					usual(&j)
 					active = append(active, j)
 				}

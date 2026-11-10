@@ -42,8 +42,12 @@ type Runner struct {
 	JobStarted time.Time `json:"jobStarted,omitzero"`
 	PlanID     string    `json:"-"`
 	JobID      int64     `json:"jobId,omitempty"` // GitHub's id, once matched
-	DiagBytes  int64     `json:"diagBytes"`
-	WorkBytes  int64     `json:"workBytes"`
+	// Labels are the labels GitHub has for this runner (self-hosted,
+	// Windows, X64 and the ones given at registration). Nil means they
+	// could not be read; see Ours.
+	Labels    []string `json:"labels,omitempty"`
+	DiagBytes int64    `json:"diagBytes"`
+	WorkBytes int64    `json:"workBytes"`
 	// Managed is why Runwatch does not start or stop this service ("" = it does).
 	Managed string `json:"managed,omitempty"`
 	// Problem is why this runner's own files could not be read ("" = they were).

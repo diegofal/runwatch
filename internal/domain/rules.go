@@ -22,13 +22,59 @@ const (
 // selfHosted is the label every self-hosted runner carries.
 const selfHosted = "self-hosted"
 
-// Ours reports whether a job belongs on this machine's runners: it ran on
-// one of them, or it has not started and asks for a self-hosted runner.
-func Ours(j Job, runners map[string]bool) bool {
+// Ours reports whether a job belongs on this machine's runners.
+//
+// A job that a runner picked up is ours when that runner is one of ours.
+// A job still waiting is ours the way GitHub decides it: when one of our
+// runners for its repo carries every label the job asks for, compared
+// without regard to case. A workflow may ask for a custom label only
+// (runs-on: my-ci), so "self-hosted" need not be among them.
+//
+// For a runner whose labels could not be read (Labels is nil), the rule
+// falls back to the one label every self-hosted runner is known to carry:
+// the job is ours if it asks for "self-hosted". The caller shows a problem
+// in that case, because jobs asking only for custom labels are then missed.
+func Ours(j Job, runners []Runner) bool {
 	if j.Runner != "" {
-		return runners[j.Runner]
+		for _, r := range runners {
+			if r.Name == j.Runner {
+				return true
+			}
+		}
+		return false
 	}
-	return slices.Contains(j.Labels, selfHosted)
+	if len(j.Labels) == 0 {
+		return false
+	}
+	for _, r := range runners {
+		if r.Repo != j.Repo {
+			continue
+		}
+		if r.Labels == nil {
+			if hasLabel(j.Labels, selfHosted) {
+				return true
+			}
+			continue
+		}
+		if carriesAll(r.Labels, j.Labels) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasLabel(labels []string, want string) bool {
+	return slices.ContainsFunc(labels, func(l string) bool { return strings.EqualFold(l, want) })
+}
+
+// carriesAll reports whether have holds every label in want.
+func carriesAll(have, want []string) bool {
+	for _, w := range want {
+		if !hasLabel(have, w) {
+			return false
+		}
+	}
+	return true
 }
 
 // Summarize computes the tray's numbers. Active holds queued and running

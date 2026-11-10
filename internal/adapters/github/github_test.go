@@ -65,6 +65,37 @@ func TestRunsAndJobs(t *testing.T) {
 	}
 }
 
+func TestRunnerLabels(t *testing.T) {
+	w, c := world(t)
+	ctx := context.Background()
+	for _, name := range []string{"app-1", "app-2"} {
+		if _, err := w.AddRunner("example/app", name); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := w.AddRunner("example/other", "other-1"); err != nil {
+		t.Fatal(err)
+	}
+	w.SetRunnerLabels("app-2", "self-hosted", "Windows", "X64", "app-ci")
+	labels, err := c.RunnerLabels(ctx, "example/app")
+	if err != nil || len(labels) != 2 {
+		t.Fatalf("labels = %v, %v; want this repo's two runners", labels, err)
+	}
+	if got := strings.Join(labels["app-1"], ","); got != "self-hosted,Windows,X64" {
+		t.Errorf("app-1 = %q", got)
+	}
+	if got := strings.Join(labels["app-2"], ","); got != "self-hosted,Windows,X64,app-ci" {
+		t.Errorf("app-2 = %q", got)
+	}
+	// GitHub answers 403 to an account that does not administer the repo.
+	w.FailNext("/actions/runners", http.StatusForbidden)
+	_, err = c.RunnerLabels(ctx, "example/app")
+	var se *StatusError
+	if !errors.As(err, &se) || se.Status != http.StatusForbidden {
+		t.Errorf("refused: err = %v", err)
+	}
+}
+
 func TestUnchangedAnswersCostNothing(t *testing.T) {
 	w, c := world(t)
 	ctx := context.Background()

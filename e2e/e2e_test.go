@@ -161,15 +161,16 @@ type state struct {
 }
 
 type job struct {
-	ID         int64  `json:"id"`
-	RunID      int64  `json:"runId"`
-	Repo       string `json:"repo"`
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
-	Runner     string `json:"runner"`
-	Attempt    int    `json:"attempt"`
-	UsualSec   int    `json:"usualSec"`
+	ID         int64    `json:"id"`
+	RunID      int64    `json:"runId"`
+	Repo       string   `json:"repo"`
+	Name       string   `json:"name"`
+	Status     string   `json:"status"`
+	Conclusion string   `json:"conclusion"`
+	Runner     string   `json:"runner"`
+	Labels     []string `json:"labels"`
+	Attempt    int      `json:"attempt"`
+	UsualSec   int      `json:"usualSec"`
 }
 
 func (a *app) state() state {
@@ -502,6 +503,16 @@ func TestTheDemoRunsOnItsOwn(t *testing.T) {
 	})
 	if len(s.Problems) != 0 {
 		t.Errorf("demo problems: %+v", s.Problems)
+	}
+	// The demo's hooks repo asks for a custom label only; its queue shows because the runner carries it.
+	custom := 0
+	for _, j := range s.Active {
+		if j.Status == "queued" && len(j.Labels) == 1 && j.Labels[0] == "hooks-ci" {
+			custom++
+		}
+	}
+	if custom == 0 {
+		t.Errorf("the demo shows no waiting job that asks only for a custom label")
 	}
 	if s.Summary.OldestWait < 50*60 {
 		t.Errorf("the demo's queue should show a long wait: %+v", s.Summary)

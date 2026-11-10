@@ -18,10 +18,8 @@ const jobFetchers = 6
 func (w *Watcher) PollGitHub(ctx context.Context) {
 	w.mu.Lock()
 	seen := map[string]bool{}
-	names := map[string]bool{}
 	var repos []string
 	for _, r := range w.runners {
-		names[r.Name] = true
 		if r.Repo != "" && !seen[r.Repo] {
 			seen[r.Repo] = true
 			repos = append(repos, r.Repo)
@@ -37,7 +35,7 @@ func (w *Watcher) PollGitHub(ctx context.Context) {
 
 	var wg sync.WaitGroup
 	for _, repo := range repos {
-		wg.Go(func() { w.pollRepo(ctx, repo, names) })
+		wg.Go(func() { w.pollRepo(ctx, repo) })
 	}
 	wg.Wait()
 
@@ -80,13 +78,53 @@ func (w *Watcher) listRuns(ctx context.Context, repo string, backfilled bool) (r
 	return out, nil
 }
 
-func (w *Watcher) pollRepo(ctx context.Context, repo string, names map[string]bool) {
+// refreshLabels reads the labels of a repo's runners when they have never
+// been read or the last read is an hour old (ten minutes when it failed, or
+// when it did not cover a runner found on this PC, such as one registered
+// since). A refused read means the account does not administer the repo;
+// until a read succeeds the runners have no labels and Ours falls back.
+func (w *Watcher) refreshLabels(ctx context.Context, repo string, rs *repoState) {
+	w.mu.Lock()
+	now := w.o.Now()
+	due := !now.Before(rs.labelsNext)
+	w.mu.Unlock()
+	if !due {
+		return
+	}
+	labels, err := w.o.GitHub.RunnerLabels(ctx, repo)
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err != nil {
+		w.o.Logf("github %s: runner labels: %v", repo, err)
+		rs.labelsNext = now.Add(labelsRetry)
+		rs.labelsProblem = &domain.Problem{Source: "github " + repo + " runner labels", Since: now,
+			Text: "Could not read the runners' labels (it needs an account that administers the repo): " + err.Error() +
+				". Until it can, a waiting job is counted only if it asks for the self-hosted label; jobs asking only for a custom label are not shown."}
+		return
+	}
+	rs.labels, rs.labelsNext, rs.labelsProblem = labels, now.Add(labelsEvery), nil
+	for i := range w.runners {
+		if w.runners[i].Repo != repo {
+			continue
+		}
+		w.runners[i].Labels = labels[w.runners[i].Name]
+		if w.runners[i].Labels == nil {
+			rs.labelsNext = now.Add(labelsRetry) // GitHub does not list this runner (yet): look again sooner
+		}
+	}
+}
+
+func (w *Watcher) pollRepo(ctx context.Context, repo string) {
 	w.mu.Lock()
 	rs := w.repos[repo]
 	if rs == nil {
 		rs = &repoState{runs: map[int64]*runState{}}
 		w.repos[repo] = rs
 	}
+	w.mu.Unlock()
+	w.refreshLabels(ctx, repo, rs)
+	w.mu.Lock()
+	runners := append([]domain.Runner(nil), w.runners...)
 	prev := make(map[int64]*runState, len(rs.runs))
 	for id, r := range rs.runs {
 		prev[id] = r
@@ -111,7 +149,7 @@ func (w *Watcher) pollRepo(ctx context.Context, repo string, names map[string]bo
 	var finished []domain.Job
 	for _, js := range jobs {
 		for _, j := range js {
-			if j.Status == domain.StatusCompleted && domain.Ours(j, names) {
+			if j.Status == domain.StatusCompleted && domain.Ours(j, runners) {
 				finished = append(finished, j)
 			}
 		}

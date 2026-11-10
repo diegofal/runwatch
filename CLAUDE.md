@@ -55,6 +55,8 @@ Chrome or Edge) and the build. Run it before every commit.
 - A run is `queued` while any of its jobs waits, even with others running. Read both lists.
 - A waiting job has `started_at` = `created_at`; a job cancelled in the queue has a `started_at` and no
   runner. Use `Job.Started()`, never the timestamp alone.
+- A waiting job's labels are its `runs-on`, which may be a custom label alone (`runs-on: my-ci`): never
+  test for "self-hosted" to decide whether a job is ours. `domain.Ours` matches against the runners' labels.
 - `.runner` starts with a byte order mark, and so does each `_diag\pages` file.
 - Page files live for seconds: the runner deletes them after upload. The tail must keep what it has read.
 - Rebuilding the tray menu while it is open closes it. The shell rebuilds only when the rows change and

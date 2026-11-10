@@ -63,11 +63,12 @@ type Run struct {
 
 // Runner is one pretend runner folder.
 type Runner struct {
-	Name string
-	Repo string
-	Dir  string
-	log  string
-	job  *Job
+	Name   string
+	Repo   string
+	Dir    string
+	Labels []string
+	log    string
+	job    *Job
 }
 
 // World is the fake GitHub and its runners.
@@ -84,6 +85,7 @@ type World struct {
 	nextID  int64
 	fail    map[string]int
 	posts   []string
+	hits    []string
 	gets    int
 	notMod  int
 }
@@ -120,7 +122,7 @@ func (w *World) AddRunner(repo, name string) (*Runner, error) {
 	if err := os.WriteFile(filepath.Join(dir, ".runner"), []byte(cfg), 0o644); err != nil {
 		return nil, err
 	}
-	r := &Runner{Name: name, Repo: repo, Dir: dir,
+	r := &Runner{Name: name, Repo: repo, Dir: dir, Labels: []string{"self-hosted", "Windows", "X64"},
 		log: filepath.Join(dir, "_diag", "Runner_"+w.Now().UTC().Format("20060102-150405")+"-utc.log")}
 	if err := appendFile(r.log, fmt.Sprintf("[%s INFO Runner] Listening for Jobs\n", stamp(w.Now()))); err != nil {
 		return nil, err
@@ -221,6 +223,15 @@ func (w *World) Output(jobID int64, lines ...string) error {
 	return os.Chtimes(page, w.Now(), w.Now()) // the file's time follows the fake's clock
 }
 
+// SetRunnerLabels replaces the labels GitHub has for a runner.
+func (w *World) SetRunnerLabels(name string, labels ...string) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if r := w.runner(name); r != nil {
+		r.Labels = labels
+	}
+}
+
 // SetLabels replaces a job's runs-on labels.
 func (w *World) SetLabels(jobID int64, labels ...string) {
 	w.mu.Lock()
@@ -295,6 +306,19 @@ func (w *World) Posts() []string {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return append([]string(nil), w.posts...)
+}
+
+// Hits returns how many requests were received whose path contains part.
+func (w *World) Hits(part string) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n := 0
+	for _, p := range w.hits {
+		if strings.Contains(p, part) {
+			n++
+		}
+	}
+	return n
 }
 
 // Counts returns how many GETs were answered and how many of them with 304.
@@ -389,6 +413,7 @@ func (w *World) Handler() http.Handler {
 	mux.HandleFunc("GET /repos/{owner}/{repo}", func(rw http.ResponseWriter, r *http.Request) {
 		w.answer(rw, r, map[string]any{"full_name": r.PathValue("owner") + "/" + r.PathValue("repo")})
 	})
+	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runners", w.listRunners)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs", w.listRuns)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/runs/{run}/jobs", w.listJobs)
 	mux.HandleFunc("GET /repos/{owner}/{repo}/actions/jobs/{job}/logs", w.jobLog)
@@ -404,6 +429,7 @@ func (w *World) Handler() http.Handler {
 			}
 		}
 		token := w.Token
+		w.hits = append(w.hits, r.URL.Path)
 		if r.Method == http.MethodPost {
 			w.posts = append(w.posts, r.URL.Path)
 		}
@@ -453,6 +479,24 @@ func (w *World) answer(rw http.ResponseWriter, r *http.Request, body any) {
 }
 
 func repoOf(r *http.Request) string { return r.PathValue("owner") + "/" + r.PathValue("repo") }
+
+func (w *World) listRunners(rw http.ResponseWriter, r *http.Request) {
+	w.mu.Lock()
+	runners := []map[string]any{}
+	for i, x := range w.runners {
+		if x.Repo != repoOf(r) {
+			continue
+		}
+		labels := []map[string]any{}
+		for _, l := range x.Labels {
+			labels = append(labels, map[string]any{"name": l, "type": "custom"})
+		}
+		runners = append(runners, map[string]any{"id": i + 1, "name": x.Name, "os": "Windows", "status": "online",
+			"busy": x.job != nil, "labels": labels})
+	}
+	w.mu.Unlock()
+	w.answer(rw, r, map[string]any{"total_count": len(runners), "runners": runners})
+}
 
 func (w *World) listRuns(rw http.ResponseWriter, r *http.Request) {
 	want := r.URL.Query().Get("status")

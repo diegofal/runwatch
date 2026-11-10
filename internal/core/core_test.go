@@ -177,6 +177,90 @@ func TestSnapshotJoinsThisPCWithGitHub(t *testing.T) {
 	}
 }
 
+// A workflow may say `runs-on: app-ci` (often through a variable): its
+// waiting jobs carry that label only, and are ours because the runners do.
+func TestWaitingJobsAreMatchedByTheRunnersLabels(t *testing.T) {
+	r := newRig(t, nil)
+	r.world.SetRunnerLabels("app-1", "self-hosted", "Windows", "X64", "app-ci")
+	r.world.SetRunnerLabels("app-2", "self-hosted", "Windows", "X64", "app-ci")
+	run := r.world.Push("example/app", "feature/x", "unit", "lint", "docs", "mac")
+	r.world.SetLabels(run.Jobs[0].ID, "app-ci")
+	r.world.SetLabels(run.Jobs[1].ID, "APP-CI", "windows")
+	r.world.SetLabels(run.Jobs[2].ID, "ubuntu-latest")        // GitHub's machines
+	r.world.SetLabels(run.Jobs[3].ID, "self-hosted", "macOS") // someone's Mac runner, not these
+	r.advance(12 * time.Minute)
+	s := r.refresh()
+	if len(s.Problems) != 0 {
+		t.Fatalf("problems: %+v", s.Problems)
+	}
+	if s.Summary.Waiting != 2 || s.Summary.OldestWait != 12*60 {
+		t.Fatalf("summary = %+v; want unit and lint waiting 12 min", s.Summary)
+	}
+	if app := s.Summary.Repos[1]; app.Repo != "example/app" || app.Waiting != 2 || app.OldestWait != 12*60 {
+		t.Errorf("repo line = %+v", app)
+	}
+	if got := strings.Join(s.Runners[1].Labels, ","); got != "self-hosted,Windows,X64,app-ci" {
+		t.Errorf("app-1's labels in the snapshot = %q", got)
+	}
+
+	// Stopping the run cancels the waiting jobs: they are history too, though no runner ever had them.
+	if _, err := r.w.CancelRun(context.Background(), "example/app", run.ID); err != nil {
+		t.Fatal(err)
+	}
+	if s = r.refresh(); len(s.Active) != 0 || len(s.Recent) != 2 {
+		t.Fatalf("after the stop: active %d, recent %d; want the two matched jobs in history", len(s.Active), len(s.Recent))
+	}
+
+	// Labels are read rarely: many polls, one read per repo; again after an hour.
+	for range 5 {
+		r.advance(10 * time.Second)
+		r.refresh()
+	}
+	if got := r.world.Hits("/actions/runners"); got != 2 {
+		t.Errorf("runner labels were read %d times; want once for each of the two repos", got)
+	}
+	r.world.SetRunnerLabels("app-1", "self-hosted", "Windows", "X64") // reconfigured
+	r.advance(time.Hour)
+	if s = r.refresh(); strings.Contains(strings.Join(s.Runners[1].Labels, ","), "app-ci") || r.world.Hits("/actions/runners") != 4 {
+		t.Errorf("after an hour the labels are read again: %v, %d reads", s.Runners[1].Labels, r.world.Hits("/actions/runners"))
+	}
+}
+
+// Reading runner labels needs an account that administers the repo. When
+// GitHub refuses, the old rule applies and the screen says what is missed.
+func TestWhenLabelsCannotBeReadTheFallbackIsSaid(t *testing.T) {
+	r := newRig(t, nil)
+	r.world.SetRunnerLabels("app-1", "self-hosted", "Windows", "X64", "app-ci")
+	r.world.FailNext("/repos/example/app/actions/runners", http.StatusForbidden)
+	run := r.world.Push("example/app", "feature/x", "unit", "lint")
+	r.world.SetLabels(run.Jobs[0].ID, "app-ci")
+	r.world.SetLabels(run.Jobs[1].ID, "self-hosted", "Windows")
+	s := r.refresh()
+	if s.Summary.Waiting != 1 || s.Active[0].Name != "lint" {
+		t.Fatalf("fallback: %+v, active %+v; want only the job that asks for self-hosted", s.Summary, s.Active)
+	}
+	if len(s.Problems) != 1 || s.Problems[0].Source != "github example/app runner labels" ||
+		!strings.Contains(s.Problems[0].Text, "403") || !strings.Contains(s.Problems[0].Text, "custom label are not shown") {
+		t.Fatalf("problems = %+v", s.Problems)
+	}
+	if s.Runners[1].Labels != nil {
+		t.Errorf("unread labels must stay unknown, not be guessed: %v", s.Runners[1].Labels)
+	}
+	before := r.world.Hits("/actions/runners")
+	r.advance(time.Minute)
+	r.refresh()
+	if got := r.world.Hits("/actions/runners"); got != before {
+		t.Errorf("a refused read is not retried on every poll: %d then %d", before, got)
+	}
+
+	// The account gets admin: within ten minutes the labels are read and the job appears.
+	r.world.Heal()
+	r.advance(10 * time.Minute)
+	if s = r.refresh(); len(s.Problems) != 0 || s.Summary.Waiting != 2 {
+		t.Fatalf("after access was granted: problems %+v, summary %+v", s.Problems, s.Summary)
+	}
+}
+
 func TestJobsForOtherMachinesAreNotOurs(t *testing.T) {
 	r := newRig(t, nil)
 	// Another PC's runner serves the same repo: GitHub knows it, this PC

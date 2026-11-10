@@ -39,7 +39,9 @@ arrow); drag it onto the taskbar to keep it visible. The dashboard is at <http:/
 - GitHub Actions self-hosted runners installed on the PC **for repositories** (see [limits](#limits)), or
   use the demo above.
 - The [GitHub CLI](https://cli.github.com) logged in (`gh auth login`) with an account that can see each
-  repo's Actions. Runwatch asks `gh` for the token; it never stores one. If you use several accounts
+  repo's Actions. An account that administers the repo is best: only then can Runwatch read the runners'
+  labels, which it needs to recognise waiting jobs of workflows that use a custom `runs-on` label. Without
+  it Runwatch says so and counts only waiting jobs that ask for `self-hosted`. Runwatch asks `gh` for the token; it never stores one. If you use several accounts
   (`gh auth login` more than once), Runwatch picks, per repo, the first account that can read it.
 
 ## Install

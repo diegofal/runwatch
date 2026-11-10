@@ -191,6 +191,38 @@ func at(t *time.Time) time.Time {
 	return *t
 }
 
+// RunnerLabels lists the labels of each self-hosted runner registered to a
+// repo, by runner name. GitHub only answers this for an account that
+// administers the repo.
+func (c *Client) RunnerLabels(ctx context.Context, repo string) (map[string][]string, error) {
+	out := map[string][]string{}
+	for page := 1; page <= maxPages; page++ {
+		var body struct {
+			Runners []struct {
+				Name   string `json:"name"`
+				Labels []struct {
+					Name string `json:"name"`
+				} `json:"labels"`
+			} `json:"runners"`
+		}
+		path := fmt.Sprintf("/repos/%s/actions/runners?per_page=%d&page=%d", repo, perPage, page)
+		if err := c.get(ctx, repo, path, &body); err != nil {
+			return nil, err
+		}
+		for _, r := range body.Runners {
+			labels := make([]string, 0, len(r.Labels))
+			for _, l := range r.Labels {
+				labels = append(labels, l.Name)
+			}
+			out[r.Name] = labels
+		}
+		if len(body.Runners) < perPage {
+			break
+		}
+	}
+	return out, nil
+}
+
 // JobLog downloads a finished job's whole log.
 func (c *Client) JobLog(ctx context.Context, repo string, jobID int64) (string, error) {
 	// GitHub answers with a redirect to a short-lived download URL; the Go

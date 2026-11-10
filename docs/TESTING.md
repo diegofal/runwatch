@@ -30,7 +30,7 @@ machine running the tests. All names in the fake are made up (`example/app`, `ac
 | `internal/adapters/runnerfs` | Reading a runner folder, with log lines in the real format; the live tail (partial lines, files deleted mid-job, a stale file from an earlier job of the same run) |
 | `internal/adapters/github` | The client against the pretend GitHub: listing, paging, ETag (unchanged answers cost nothing), actions, GitHub's error text, a refused token being forgotten, picking the right `gh` account per repo |
 | `internal/adapters/history`, `machine`, `internal/config` | The history file (torn last line, compaction), discovery through services and folders, config and its overrides |
-| `internal/core` | Scenarios on the real Watcher with the real client, tail and history: a day's queue, live log then the whole log, an outage (problem shown, old numbers kept, then cleared), stop and re-run and their refusals, service control and "managed elsewhere", alerts sent once, restart without re-announcing old news |
+| `internal/core` | Scenarios on the real Watcher with the real client, tail and history: a day's queue, live log then the whole log, an outage (problem shown, old numbers kept, then cleared), waiting jobs matched by the runners' labels (and the stated fallback when GitHub refuses to list them), stop and re-run and their refusals, service control and "managed elsewhere", alerts sent once, restart without re-announcing old news |
 | `internal/server` | Every endpoint, the status of each kind of error, the event stream, and the rules that keep other sites out |
 | `internal/tray` | The menu on a quiet and a busy day, the icon per level |
 | `internal` (arch test) | The import rules between packages |

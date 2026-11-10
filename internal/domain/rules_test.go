@@ -49,21 +49,43 @@ func TestJobWaitedAndRan(t *testing.T) {
 }
 
 func TestOurs(t *testing.T) {
-	mine := map[string]bool{"app-1": true}
+	mine := []Runner{
+		{Name: "app-1", Repo: "example/app", Labels: []string{"self-hosted", "Windows", "X64", "app-ci"}},
+		{Name: "hooks-1", Repo: "example/hooks", Labels: []string{"self-hosted", "Windows", "X64"}},
+		{Name: "old-1", Repo: "example/old"}, // labels could not be read
+	}
+	waiting := func(repo string, labels ...string) Job { return Job{Repo: repo, Labels: labels} }
 	cases := []struct {
 		name string
 		job  Job
 		want bool
 	}{
-		{"ran on our runner", Job{Runner: "app-1"}, true},
-		{"ran on someone else's runner", Job{Runner: "GitHub Actions 7", Labels: []string{"self-hosted"}}, false},
-		{"waiting for a self-hosted runner", Job{Labels: []string{"self-hosted", "Windows"}}, true},
-		{"waiting for a GitHub-hosted runner", Job{Labels: []string{"ubuntu-latest"}}, false},
+		{"ran on our runner", Job{Repo: "example/app", Runner: "app-1"}, true},
+		{"ran on someone else's runner", Job{Repo: "example/app", Runner: "GitHub Actions 7", Labels: []string{"self-hosted"}}, false},
+		{"ran on another PC's runner that has our labels", Job{Repo: "example/app", Runner: "other-pc-1", Labels: []string{"app-ci"}}, false},
+
+		// The workflow says `runs-on: app-ci`: the job never mentions self-hosted.
+		{"waiting, asks only for a custom label our runner carries", waiting("example/app", "app-ci"), true},
+		{"waiting, asks for several labels, all carried", waiting("example/app", "self-hosted", "Windows", "app-ci"), true},
+		{"labels compare without regard to case", waiting("example/app", "Self-Hosted", "WINDOWS", "App-CI"), true},
+		{"waiting, one label our runner lacks", waiting("example/app", "self-hosted", "Linux"), false},
+		{"waiting for a GitHub-hosted runner", waiting("example/app", "ubuntu-latest"), false},
+		{"a custom label carried only by another repo's runner", waiting("example/hooks", "app-ci"), false},
+		{"a repo we have no runner for", waiting("example/elsewhere", "self-hosted"), false},
+		{"a job with no labels matches nothing", waiting("example/app"), false},
+
+		// Labels unread: only the label every self-hosted runner has can be trusted.
+		{"labels unread: asks for self-hosted", waiting("example/old", "self-hosted", "Windows"), true},
+		{"labels unread: self-hosted in another case", waiting("example/old", "SELF-HOSTED"), true},
+		{"labels unread: asks only for a custom label", waiting("example/old", "old-ci"), false},
 	}
 	for _, c := range cases {
 		if got := Ours(c.job, mine); got != c.want {
 			t.Errorf("%s: Ours = %v, want %v", c.name, got, c.want)
 		}
+	}
+	if Ours(waiting("example/app", "app-ci"), nil) {
+		t.Error("with no runners nothing is ours")
 	}
 }
 

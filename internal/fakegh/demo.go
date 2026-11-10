@@ -33,6 +33,22 @@ var demoRepos = []struct {
 	{"acme/billing", "billing", 3, []string{"feature/invoice-pdf", "fix/tax-rounding"}, []string{"api tests", "web tests", "lint", "build"}},
 }
 
+// customLabel is what the hooks repo's workflow asks for instead of
+// self-hosted (runs-on: hooks-ci): its waiting jobs are found only by
+// matching the runner's labels.
+const customLabel = "hooks-ci"
+
+// push is World.Push with the repo's runs-on labels applied.
+func (d *Demo) push(repo, branch string, jobs ...string) *Run {
+	run := d.W.Push(repo, branch, jobs...)
+	if repo == "example/hooks" {
+		for _, j := range run.Jobs {
+			d.W.SetLabels(j.ID, customLabel)
+		}
+	}
+	return run
+}
+
 var demoTests = []string{"lease floor fits a core job", "ledger rows keep order", "retry backs off", "board renders city",
 	"mentions resolve aliases", "hosts pick a free port", "token refresh survives restart", "tax rounding half-even",
 	"invoice pdf has totals", "queue drains in order", "exit code propagates", "cache key includes lockfile"}
@@ -50,8 +66,12 @@ func NewDemo(w *World, seed uint64) (*Demo, error) {
 	at(2 * time.Hour)
 	for _, r := range demoRepos {
 		for i := 1; i <= r.runners; i++ {
-			if _, err := w.AddRunner(r.repo, fmt.Sprintf("%s-%d", r.short, i)); err != nil {
+			name := fmt.Sprintf("%s-%d", r.short, i)
+			if _, err := w.AddRunner(r.repo, name); err != nil {
 				return nil, err
+			}
+			if r.short == "hooks" {
+				w.SetRunnerLabels(name, "self-hosted", "Windows", "X64", customLabel)
 			}
 		}
 	}
@@ -65,7 +85,7 @@ func NewDemo(w *World, seed uint64) (*Demo, error) {
 				}
 				name := r.jobs[d.rnd.IntN(len(r.jobs))]
 				at(ago + time.Duration(d.rnd.IntN(20))*time.Minute)
-				run := w.Push(r.repo, r.branches[d.rnd.IntN(len(r.branches))], name)
+				run := d.push(r.repo, r.branches[d.rnd.IntN(len(r.branches))], name)
 				job := run.Jobs[0]
 				at(ago)
 				if err := w.Start(job.ID, runner, d.stepsFor(name)...); err != nil {
@@ -92,10 +112,12 @@ func NewDemo(w *World, seed uint64) (*Demo, error) {
 	app := demoRepos[0]
 	for i, mins := range []int{58, 51, 34, 12, 5} {
 		at(time.Duration(mins) * time.Minute)
-		w.Push(app.repo, app.branches[i], app.jobs...)
+		d.push(app.repo, app.branches[i], app.jobs...)
 	}
 	at(3 * time.Minute)
-	w.Push("example/hooks", "fix/exit-codes", demoRepos[1].jobs...)
+	d.push("example/hooks", "fix/exit-codes", demoRepos[1].jobs...)
+	at(90 * time.Second)
+	d.push("example/hooks", "main", demoRepos[1].jobs...)
 	at(0)
 	return d, d.assign()
 }
@@ -233,7 +255,7 @@ func (d *Demo) step() error {
 	}
 	if d.rnd.IntN(50) == 0 {
 		r := demoRepos[d.rnd.IntN(len(demoRepos))]
-		w.Push(r.repo, r.branches[d.rnd.IntN(len(r.branches))], r.jobs...)
+		d.push(r.repo, r.branches[d.rnd.IntN(len(r.branches))], r.jobs...)
 	}
 	return d.assign()
 }

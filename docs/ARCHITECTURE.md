@@ -33,6 +33,7 @@ One Go program. It reads two sources, joins them into one snapshot, and two fron
 | Service running or stopped | Service manager, query-only access | No admin needed to read |
 | Runner busy, with which job, since when | The newest `_diag\Runner_*.log`: the last `Running job: X` line with no `Job X completed with result:` after it | Known within 2 s, before GitHub's API shows it |
 | Output of a running job | `_diag\pages\<plan>_<record>_<n>.log`, polled every 300 ms | The only local source; see the limits below |
+| A runner's labels | `GET /repos/{repo}/actions/runners`, by runner name, hourly | Needed to tell which waiting jobs are for these runners |
 | Queue, steps, branch, who pushed | `GET /repos/{repo}/actions/runs?status=queued` and `in_progress`, then `/runs/{id}/jobs` | Waiting jobs never reach the PC |
 | Output of a finished job | `GET /repos/{repo}/actions/jobs/{id}/logs` | Complete, unlike the local blocks |
 | "Usual" time | Median run time of the newest 20 successful jobs of the same repo and name in `history.jsonl` | A fact about the past, not an estimate |
@@ -48,7 +49,17 @@ Three details of the GitHub API that shape the code:
 
 The join between the two sources is the runner's name: a job in progress whose `runner_name` is a runner on
 this PC is that runner's job. A job that ran on some other machine's runner for the same repo is not ours
-and is left out; a waiting job is ours when it asks for a `self-hosted` runner.
+and is left out.
+
+A **waiting** job has no runner yet, so it is matched the way GitHub matches it (`domain.Ours`): it is ours
+when one of this PC's runners for that repo carries every label the job asks for, compared without regard to
+case. The job's labels are its `runs-on`; a workflow that says `runs-on: my-ci` (often through a variable)
+asks for that label only and never mentions `self-hosted`. The runners' labels come from
+`GET /repos/{repo}/actions/runners`, matched by runner name and read once an hour, since they change only
+when a runner is reconfigured. That call needs an account that administers the repo. When GitHub refuses it,
+the rule falls back to the one label every self-hosted runner is known to carry (a waiting job is ours if it
+asks for `self-hosted`), and a problem line says so, because jobs asking only for a custom label are then
+missed. The read is tried again every ten minutes.
 
 ### The live output and its limits
 

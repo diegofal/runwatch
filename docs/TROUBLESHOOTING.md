@@ -18,6 +18,7 @@ the three-bar icon onto the taskbar. If it is not there either, the app is not r
 | `github <repo>: ... HTTP 401` | The token expired or was revoked | Runwatch asks `gh` again on the next poll. If it stays, run `gh auth status` and log in again. |
 | `github <repo>: ... HTTP 403` on stop or re-run | The token can read Actions but not write them | Use an account with write access to the repo; a classic token needs the `repo` scope |
 | `github <repo>: ... HTTP 403` or `429` mentioning a rate limit | Too many requests on that account | It recovers when the limit resets. Other tools sharing the token are the usual cause: Runwatch's own polling is nearly free (see Configuration). |
+| `github <repo> runner labels: Could not read the runners' labels ...` | GitHub only lists a repo's runners (with their labels) for an account that administers the repo | Log `gh` in with an account that is an admin of the repo; Runwatch tries again every ten minutes. Until then waiting jobs are counted only if they ask for the `self-hosted` label, so a workflow with `runs-on: <custom label>` shows no queue. |
 | `github <repo>: ... dial tcp` / `timeout` | No network path to GitHub | The last known numbers stay on screen with this warning; it clears by itself |
 | `runner <name>: .runner has no repository URL ... organization runners are not supported` | The runner is registered to an organization | A known limit: only repository runners are watched |
 | `runner <name>: parse .runner` / `read .runner` | The runner's folder is damaged or unreadable by your user | Check the folder; re-register the runner if `.runner` is broken |
@@ -52,8 +53,12 @@ first.
 
 ## The numbers differ from GitHub's page
 
-Runwatch counts only jobs for this PC's runners: jobs that ran on them, and waiting jobs that ask for a
-`self-hosted` runner. Jobs on GitHub-hosted machines and on other PCs' runners are left out.
+Runwatch counts only jobs for this PC's runners: jobs that ran on them, and waiting jobs whose `runs-on`
+labels are all carried by one of this PC's runners for that repo. Jobs on GitHub-hosted machines and on
+other PCs' runners are left out. Waiting jobs that another PC's runner with the same labels could also take
+are counted: until a runner picks a job up, GitHub does not say which one will.
+
+If a repo's queue shows as empty while GitHub shows waiting jobs, look for the "runner labels" message above.
 
 ## Resetting
 
