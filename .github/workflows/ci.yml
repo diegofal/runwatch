@@ -1,0 +1,39 @@
+name: ci
+
+# `task ci` on Windows, the OS Runwatch ships for: format check, vet, lint,
+# tests with coverage gates, the end-to-end tests (with Chrome) and the build.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      # The runner image has Chrome: a missing browser must fail, not skip.
+      RUNWATCH_E2E_BROWSER: required
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags, for the version `task build` stamps
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - name: tools
+        shell: bash
+        run: |
+          go install github.com/go-task/task/v3/cmd/task@latest
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
+      - name: task ci
+        shell: bash
+        run: task ci
+      - uses: actions/upload-artifact@v4
+        with:
+          name: runwatch-windows
+          path: bin/
+          if-no-files-found: error

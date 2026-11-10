@@ -1,0 +1,49 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - unparam
+    - dupl
+    - gocyclo
+    - gocritic
+    - misspell
+    - depguard
+    - nolintlint
+  settings:
+    gocyclo:
+      min-complexity: 15
+    dupl:
+      threshold: 150
+    depguard:
+      rules:
+        no-mocking-frameworks:
+          deny:
+            - pkg: github.com/stretchr/testify/mock
+              desc: "use the hand-written fake in internal/fakegh"
+            - pkg: github.com/golang/mock
+              desc: "use the hand-written fake in internal/fakegh"
+            - pkg: go.uber.org/mock
+              desc: "use the hand-written fake in internal/fakegh"
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters: [dupl, gocyclo, unparam]
+      # The pretend GitHub and its demo script are test equipment.
+      - path: internal/fakegh/
+        linters: [gocyclo]
+
+formatters:
+  enable:
+    - gofmt

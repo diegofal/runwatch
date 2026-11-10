@@ -1,0 +1,294 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Runwatch — tray prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0c0e10; --panel:#16191c; --panel2:#1c2024; --line:#2a2f35; --ink:#e7e9ea; --dim:#8b939b; --faint:#5b636b;
+    --run:#5ad1ff; --ok:#7bd88f; --bad:#ff6b5e; --wait:#ffb347; --cancel:#8a8f98;
+    --mono:'JetBrains Mono',ui-monospace,monospace; --cond:'Barlow Condensed',sans-serif; --body:'Barlow',sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;
+    background-image:radial-gradient(ellipse at 20% -10%,#1b2a33 0,transparent 55%),radial-gradient(ellipse at 110% 120%,#2a2117 0,transparent 50%);
+    min-height:100vh}
+  header.page{padding:28px 36px 8px;display:flex;align-items:flex-end;gap:28px;flex-wrap:wrap}
+  header.page h1{font-family:var(--cond);font-weight:700;font-size:44px;letter-spacing:.02em;margin:0;line-height:.9;text-transform:uppercase}
+  header.page h1 span{color:var(--run)}
+  header.page p{margin:0;color:var(--dim);max-width:720px;line-height:1.45}
+  .chip{font-family:var(--mono);font-size:11px;border:1px solid var(--line);padding:3px 8px;border-radius:99px;color:var(--dim)}
+  .sim{display:flex;gap:8px;align-items:center;margin-left:auto}
+  .sim button{all:unset;cursor:pointer;font-family:var(--mono);font-size:11px;border:1px solid var(--line);padding:5px 10px;border-radius:6px;color:var(--ink)}
+  .sim button:hover{border-color:var(--run)}
+  .cols{display:grid;grid-template-columns:repeat(3,minmax(360px,1fr));gap:22px;padding:18px 36px 40px;align-items:start}
+  @media (max-width:1250px){.cols{grid-template-columns:1fr}}
+  .col h2{font-family:var(--cond);font-weight:600;font-size:22px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 4px;display:flex;gap:10px;align-items:baseline}
+  .col h2 b{font-family:var(--mono);font-size:12px;color:var(--bg);background:var(--ink);padding:1px 6px;border-radius:3px}
+  .col h2 .rec{font-family:var(--mono);font-size:10.5px;color:var(--ok);border:1px solid var(--ok);padding:1px 6px;border-radius:99px;letter-spacing:0;text-transform:none}
+  .col .why{color:var(--dim);margin:0 0 14px;line-height:1.45;min-height:60px}
+  /* fake desktop */
+  .desk{position:relative;height:640px;border-radius:12px;overflow:hidden;border:1px solid var(--line);
+    background:linear-gradient(160deg,#1d3a4a 0%,#14222c 40%,#0f1419 100%)}
+  .desk::after{content:"";position:absolute;inset:0;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.06'/%3E%3C/svg%3E");pointer-events:none}
+  .taskbar{position:absolute;left:0;right:0;bottom:0;height:44px;background:rgba(22,24,28,.86);backdrop-filter:blur(18px);border-top:1px solid rgba(255,255,255,.06);display:flex;align-items:center;justify-content:flex-end;padding:0 10px;gap:6px;z-index:3}
+  .taskbar .clock{font-family:'Segoe UI Variable','Segoe UI',sans-serif;font-size:11.5px;text-align:right;color:#ddd;line-height:1.25;padding:0 6px}
+  .tico{width:34px;height:34px;border-radius:6px;display:grid;place-items:center;cursor:pointer;position:relative}
+  .tico:hover,.tico.on{background:rgba(255,255,255,.08)}
+  .tico .badge{position:absolute;right:1px;top:2px;font:600 9px/1 var(--mono);background:var(--wait);color:#1a1205;border-radius:99px;padding:2px 3px;min-width:14px;text-align:center}
+  .tico .badge.bad{background:var(--bad);color:#fff}
+  .other{width:16px;height:16px;border-radius:3px;background:#3a3f45;opacity:.6}
+
+  /* A — native menu */
+  .menu{position:absolute;right:46px;bottom:52px;width:330px;background:#202326;border:1px solid #33383d;border-radius:8px;padding:4px;box-shadow:0 12px 36px rgba(0,0,0,.5);
+    font-family:'Segoe UI Variable','Segoe UI',sans-serif;font-size:12.5px;z-index:4}
+  .mi{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:4px;position:relative;cursor:default;white-space:nowrap}
+  .mi:hover{background:#2e3236}
+  .mi .r{margin-left:auto;color:#9aa;font-variant-numeric:tabular-nums}
+  .mi .arrow{margin-left:6px;color:#9aa}
+  .mi.head{color:#cfd3d6;pointer-events:none}
+  .mi.head .dot{width:8px;height:8px;border-radius:50%}
+  .sep{height:1px;background:#33383d;margin:4px 6px}
+  .sub{display:none;position:absolute;right:100%;top:-5px;margin-right:2px;width:220px;background:#202326;border:1px solid #33383d;border-radius:8px;padding:4px;box-shadow:0 12px 36px rgba(0,0,0,.5)}
+  .mi:hover>.sub{display:block}
+  .mi .muted{color:#8c959c}
+
+  /* B — flyout */
+  .fly{position:absolute;right:10px;bottom:54px;width:384px;max-height:574px;display:flex;flex-direction:column;background:rgba(20,23,26,.97);border:1px solid #2d3238;border-radius:12px;box-shadow:0 18px 48px rgba(0,0,0,.55);overflow:hidden;z-index:4}
+  .fly .top{display:grid;grid-template-columns:1fr 1fr 1fr;border-bottom:1px solid var(--line)}
+  .fly .fig{padding:12px 14px 10px;border-right:1px solid var(--line)}
+  .fly .fig:last-child{border-right:0}
+  .fly .fig .k{font-family:var(--cond);font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim)}
+  .fly .fig .v{font-family:var(--cond);font-weight:700;font-size:34px;line-height:1;font-variant-numeric:tabular-nums}
+  .fly .fig .v small{font-size:16px;color:var(--dim);font-weight:500}
+  .repos{padding:8px 12px;border-bottom:1px solid var(--line);display:grid;gap:5px}
+  .repo{display:grid;grid-template-columns:60px auto 1fr;align-items:center;gap:10px;font-size:12px}
+  .repo .nm{font-family:var(--mono);font-size:11.5px}
+  .slots{display:flex;gap:3px}
+  .slot{width:13px;height:13px;border-radius:3px;border:1px solid var(--line);background:transparent}
+  .slot.busy{background:var(--run);border-color:var(--run);animation:pulse 1.6s ease-in-out infinite}
+  .slot.off{background:repeating-linear-gradient(45deg,#3a3f45 0 2px,transparent 2px 4px)}
+  @keyframes pulse{50%{opacity:.55}}
+  .repo .q{color:var(--dim);text-align:right;font-variant-numeric:tabular-nums}
+  .repo .q b{color:var(--wait);font-weight:600}
+  .scroll{overflow:auto;flex:1}
+  .sect{font-family:var(--cond);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);padding:10px 14px 4px;display:flex;justify-content:space-between}
+  .job{padding:7px 14px 8px;border-top:1px solid rgba(255,255,255,.03);cursor:pointer;position:relative}
+  .job:hover{background:var(--panel2)}
+  .job .l1{display:flex;gap:8px;align-items:baseline}
+  .job .rn{font-family:var(--mono);font-size:10.5px;color:var(--bg);background:var(--run);padding:0 5px;border-radius:3px}
+  .job .nm{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .job .el{margin-left:auto;font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums}
+  .job .l2{display:flex;gap:8px;color:var(--dim);font-size:11.5px;margin-top:2px}
+  .job .l2 .br{font-family:var(--mono);font-size:10.5px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .bar{height:4px;background:#262b30;border-radius:2px;margin-top:6px;position:relative;overflow:hidden}
+  .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--run);border-radius:2px;transition:width .25s linear}
+  .bar.over i{background:var(--wait)}
+  .acts{display:none;position:absolute;right:10px;top:6px;gap:4px;background:var(--panel2);padding-left:6px}
+  .job:hover .acts{display:flex}
+  .btn{all:unset;cursor:pointer;font-family:var(--mono);font-size:10.5px;border:1px solid var(--line);border-radius:5px;padding:3px 7px;color:var(--ink);background:var(--panel)}
+  .btn:hover{border-color:var(--ink)}
+  .btn.stop:hover{border-color:var(--bad);color:var(--bad)}
+  .btn.go{border-color:var(--run);color:var(--run)}
+  .mini{margin-top:7px;background:#07090a;border:1px solid #20252a;border-radius:6px;font-family:var(--mono);font-size:10.5px;line-height:1.5;padding:6px 8px;height:118px;overflow:hidden;display:flex;flex-direction:column;justify-content:flex-end;color:#c9d1d6}
+  .mini div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ok{color:var(--ok)} .err{color:var(--bad)} .warn{color:var(--wait)} .dimc{color:var(--faint)} .cmd{color:var(--run)} .grp{color:#fff;font-weight:500}
+  .confirm{margin-top:7px;padding:7px 9px;border:1px solid var(--bad);border-radius:6px;font-size:12px;display:flex;align-items:center;gap:8px;background:rgba(255,107,94,.06)}
+  .confirm span{flex:1}
+  .fail{display:flex;gap:8px;align-items:center;padding:6px 14px;font-size:12.5px}
+  .fail .x{color:var(--bad);font-weight:700}
+  .fail .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .fail .ago{color:var(--dim);font-family:var(--mono);font-size:11px}
+  .foot{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;border-top:1px solid var(--line);font-size:12px;color:var(--dim)}
+  .foot a{color:var(--run);text-decoration:none;font-weight:600}
+
+  /* C — glance */
+  .tip{position:absolute;right:56px;bottom:54px;background:#2a2d31;border:1px solid #3a3f44;border-radius:6px;padding:7px 10px;font-family:'Segoe UI Variable','Segoe UI',sans-serif;font-size:12px;line-height:1.4;z-index:4;max-width:290px;color:#e8e8e8}
+  .toasts{position:absolute;right:10px;bottom:150px;width:350px;display:flex;flex-direction:column-reverse;gap:8px;z-index:4}
+  .toast{background:rgba(32,35,38,.97);border:1px solid #393e44;border-radius:8px;padding:10px 12px;box-shadow:0 10px 28px rgba(0,0,0,.45);font-family:'Segoe UI Variable','Segoe UI',sans-serif;font-size:12.5px;animation:in .35s ease-out}
+  @keyframes in{from{transform:translateX(30px);opacity:0}}
+  .toast .app{font-size:11px;color:#9aa;display:flex;gap:6px;align-items:center;margin-bottom:3px}
+  .toast .ttl{font-weight:600;margin-bottom:2px}
+  .toast .row{display:flex;gap:6px;margin-top:8px}
+  .toast .row button{all:unset;cursor:pointer;flex:1;text-align:center;background:#34383d;border-radius:4px;padding:5px;font-size:12px}
+  .toast .row button:hover{background:#40454b}
+  .legend{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-top:14px}
+  .lg{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;color:var(--dim)}
+  .lg b{color:var(--ink);font-weight:600;display:block}
+  .verdict{margin:0 36px 40px;padding:18px 22px;border:1px solid var(--line);border-left:3px solid var(--ok);border-radius:8px;background:var(--panel);line-height:1.55;max-width:1100px}
+  .verdict h3{font-family:var(--cond);font-size:20px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 6px}
+  .verdict code{font-family:var(--mono);font-size:12px;color:var(--run)}
+</style>
+</head>
+<body>
+<header class="page">
+  <div>
+    <div class="chip" style="display:inline-block;margin-bottom:10px">prototype · made-up data · clock runs 8×</div>
+    <h1>Run<span>watch</span> — tray</h1>
+  </div>
+  <p>The 9 runners on this PC as three tray designs. Real setup copied here: 5 runners on the busy repo with ~80 jobs waiting, 1 on hooks, 3 on billing sitting idle. Hover the rows. Stop and re-run work in the simulation and never open a pop-up.</p>
+  <div class="sim">
+    <button id="pushBtn">+ simulate a push</button>
+    <a class="chip" href="dashboard.html" style="text-decoration:none;color:var(--run);border-color:var(--run)">dashboard →</a>
+  </div>
+</header>
+
+<div class="cols">
+  <section class="col">
+    <h2><b>A</b> Native menu</h2>
+    <p class="why">Right-click opens a standard Windows menu. Each runner has a submenu (terminal, stop, re-run). The lightest to build and the most familiar, but it can't show progress or a live terminal: those open in the dashboard.</p>
+    <div class="desk"><div id="menuA"></div><div class="taskbar"><div class="other"></div><div class="tico on" id="icoA"></div><div class="clock" id="clkA"></div></div></div>
+  </section>
+
+  <section class="col">
+    <h2><b>B</b> Flyout <span class="rec">recommended</span></h2>
+    <p class="why">Left-click opens a small panel. Three numbers, one row per repo, and the running jobs with step and time. Click a job to see its terminal right there. Stop asks for confirmation inside the row. Right-click still opens menu A.</p>
+    <div class="desk"><div id="flyB"></div><div class="taskbar"><div class="other"></div><div class="tico on" id="icoB"></div><div class="clock" id="clkB"></div></div></div>
+  </section>
+
+  <section class="col">
+    <h2><b>C</b> Icon + notifications</h2>
+    <p class="why">No panel at all. The icon shows the state, hovering shows one line, and clicking opens the dashboard. You only hear from it when something happens: a job failed, or a job has waited more than 45 min. The notifications have Re-run and Log buttons.</p>
+    <div class="desk"><div class="toasts" id="toastC"></div><div class="tip" id="tipC"></div><div class="taskbar"><div class="other"></div><div class="tico on" id="icoC"></div><div class="clock" id="clkC"></div></div></div>
+    <div class="legend" id="legend"></div>
+  </section>
+</div>
+
+<div class="verdict">
+  <h3>What I'd build</h3>
+  <b>B as the left click, A as the right click, and C's notifications for failures and long waits.</b>
+  The icon shows the queue: blue while jobs run, amber with the waiting count once something has waited more than 15 min, and a red dot when a job failed in the last hour.
+  Everything that needs space (job history, queue table, full terminal, runner disk use) goes in the dashboard. The tray app serves it on <code>localhost</code>, so the same page also opens in a browser.
+</div>
+
+<script src="mock.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const F = Sim.fmtDur, FS = Sim.fmtShort;
+const WAIT_ALERT = 15 * 60;
+
+function iconSVG(state) {
+  // state: idle | run | wait | fail
+  const c = { idle:'#8b939b', run:'#5ad1ff', wait:'#ffb347', fail:'#5ad1ff' }[state];
+  return `<svg width="20" height="20" viewBox="0 0 20 20"><rect x="2" y="3" width="3.2" height="14" rx="1" fill="${c}" opacity=".95"/><rect x="8.4" y="6" width="3.2" height="11" rx="1" fill="${c}" opacity=".75"/><rect x="14.8" y="9" width="3.2" height="8" rx="1" fill="${c}" opacity=".55"/>${state==='fail'?'<circle cx="16" cy="4" r="3.4" fill="#ff6b5e" stroke="#16181c" stroke-width="1.2"/>':''}</svg>`;
+}
+function trayState(s) { return s.failedHour ? 'fail' : s.oldest > WAIT_ALERT ? 'wait' : s.busy ? 'run' : 'idle'; }
+function icon(el, s) {
+  const st = trayState(s);
+  el.innerHTML = iconSVG(st) + (st === 'wait' ? `<span class="badge">${s.waiting}</span>` : '');
+}
+function progress(j) {
+  const el = (Sim.now - j.startedAt) / 1000; const pct = Math.min(100, el / j.usual * 100);
+  return { el, pct, over: el > j.usual };
+}
+
+// ---------------- A ----------------
+function renderA(s) {
+  const run = Sim.running().sort((a,b)=>a.runner.localeCompare(b.runner,undefined,{numeric:true}));
+  const failed = Sim.completed().filter(j => j.conclusion === 'failure' && Sim.now - j.finishedAt < 3600e3);
+  const idle = Sim.runners.filter(r => !r.jobId);
+  $('#menuA').innerHTML = `<div class="menu">
+    <div class="mi head"><span class="dot" style="background:var(--run)"></span>${s.busy} of ${s.total} runners busy</div>
+    <div class="mi head"><span class="dot" style="background:var(--wait)"></span>${s.waiting} jobs waiting${s.waiting ? ` · oldest ${FS(s.oldest)}` : ''}</div>
+    ${failed.length ? `<div class="mi head"><span class="dot" style="background:var(--bad)"></span>${failed.length} failed in the last hour</div>` : ''}
+    <div class="sep"></div>
+    ${run.map(j => `<div class="mi"><span style="font-family:var(--mono);font-size:11px;width:56px">${j.runner}</span>${esc(j.name)}<span class="r">${FS(progress(j).el)}</span><span class="arrow">›</span>
+      <div class="sub"><div class="mi muted">${esc(Sim.runs.get(j.runId).branch)}</div><div class="mi muted">step ${Sim.stepIndex(j)+1}/${j.steps.length} · usually ${FS(j.usual)}</div><div class="sep"></div>
+      <div class="mi">Show terminal</div><div class="mi" onclick="Sim.actions.cancelRun(${j.runId})">Stop run #${j.runId}</div><div class="mi" onclick="Sim.actions.rerunJob(${j.id})">Re-run this job</div><div class="mi">Open on GitHub</div></div></div>`).join('')}
+    ${idle.length ? `<div class="mi"><span class="muted">${idle.length} idle: ${idle.map(r=>r.name).join(', ')}</span></div>` : ''}
+    <div class="sep"></div>
+    <div class="mi">Waiting<span class="r">${s.waiting}</span><span class="arrow">›</span><div class="sub">${s.byRepo.map(r => `<div class="mi">${r.short}<span class="r">${r.waiting}${r.waiting ? ' · ' + FS((Sim.now - r.oldest)/1000) : ''}</span></div>`).join('')}</div></div>
+    ${failed.length ? `<div class="mi">Failed<span class="r">${failed.length}</span><span class="arrow">›</span><div class="sub">${failed.slice(0,5).map(j => `<div class="mi" onclick="Sim.actions.rerunJob(${j.id})">${Sim.repos[j.repo].short} · ${esc(j.name)}<span class="r">re-run</span></div>`).join('')}</div></div>` : ''}
+    <div class="sep"></div>
+    <div class="mi" style="font-weight:600">Open dashboard</div>
+    <div class="mi">Notifications<span class="arrow">›</span><div class="sub"><div class="mi">✓ Failed jobs</div><div class="mi">✓ Waited over 45 min</div><div class="mi muted">Every finished job</div></div></div>
+    <div class="mi">Quit</div>
+  </div>`;
+}
+
+// ---------------- B ----------------
+let openJob = null, confirmRun = null;
+function renderB(s) {
+  const run = Sim.running().sort((a,b)=>a.runner.localeCompare(b.runner,undefined,{numeric:true}));
+  const failed = Sim.completed().filter(j => j.conclusion === 'failure' && Sim.now - j.finishedAt < 3600e3);
+  if (openJob && !run.find(j => j.id === openJob)) openJob = null;
+  const slots = repo => Sim.runners.filter(r => r.repo === repo).map(r => `<span class="slot ${r.service!=='running'?'off':r.jobId?'busy':''}" title="${r.name}"></span>`).join('');
+  const html = `<div class="fly">
+    <div class="top">
+      <div class="fig"><div class="k">Running</div><div class="v">${s.busy}<small>/${s.total}</small></div></div>
+      <div class="fig"><div class="k">Waiting</div><div class="v" style="color:${s.waiting?'var(--wait)':'inherit'}">${s.waiting}</div></div>
+      <div class="fig"><div class="k">Oldest wait</div><div class="v">${s.waiting ? FS(s.oldest) : '—'}</div></div>
+    </div>
+    <div class="repos">${s.byRepo.map(r => `<div class="repo"><span class="nm" style="color:${r.color}">${r.short}</span><span class="slots">${slots(r.repo)}</span>
+      <span class="q">${r.waiting ? `<b>${r.waiting} waiting</b> · oldest ${FS((Sim.now - r.oldest)/1000)}` : r.busy ? 'nothing waiting' : 'idle'}</span></div>`).join('')}</div>
+    <div class="scroll">
+      <div class="sect"><span>Running now</span><span>step · time / usual</span></div>
+      ${run.map(j => { const p = progress(j), st = j.steps[Sim.stepIndex(j)] || {}; const rb = Sim.runs.get(j.runId);
+        return `<div class="job" data-job="${j.id}">
+          <div class="l1"><span class="rn">${j.runner}</span><span class="nm">${esc(j.name)}</span><span class="el" style="color:${p.over?'var(--wait)':'inherit'}">${F(p.el)}</span></div>
+          <div class="l2"><span class="br">${esc(rb.branch)}</span><span>· ${Sim.stepIndex(j)+1}/${j.steps.length} ${esc(st.name||'')}</span><span style="margin-left:auto;font-family:var(--mono);font-size:10.5px">usual ${FS(j.usual)}</span></div>
+          <div class="bar ${p.over?'over':''}"><i style="width:${p.pct}%"></i></div>
+          <div class="acts"><button class="btn" data-a="term" data-id="${j.id}">${openJob===j.id?'▾':'▸'} terminal</button><button class="btn stop" data-a="stop" data-id="${j.runId}">■ stop</button></div>
+          ${confirmRun === j.runId ? `<div class="confirm"><span>Stop run #${j.runId}? It cancels its ${rb.jobIds.filter(id=>Sim.jobs.get(id).status!=='completed').length} unfinished jobs.</span><button class="btn stop" data-a="yes" data-id="${j.runId}">Stop</button><button class="btn" data-a="no">Keep</button></div>` : ''}
+          ${openJob === j.id ? `<div class="mini">${j.log.slice(-8).map(l => `<div class="${l.cls==='group'?'grp':l.cls==='dim'?'dimc':l.cls}">${l.cls==='group'?'▸ ':''}${esc(l.text)}</div>`).join('')}</div>` : ''}
+        </div>`; }).join('')}
+      ${failed.length ? `<div class="sect"><span>Failed · last hour</span><span></span></div>` + failed.slice(0,4).map(j => `<div class="fail"><span class="x">✕</span><span class="t">${Sim.repos[j.repo].short} · ${esc(j.name)} <span style="color:var(--dim)">on ${j.runner}</span></span><span class="ago">${FS((Sim.now-j.finishedAt)/1000)} ago</span><button class="btn go" data-a="rerun" data-id="${j.id}">↻ re-run</button></div>`).join('') : ''}
+    </div>
+    <div class="foot"><span>Updated just now · from GitHub + this PC</span><a href="dashboard.html">Open dashboard ↗</a></div>
+  </div>`;
+  const host = $('#flyB'); const sc = host.querySelector('.scroll'); const top = sc ? sc.scrollTop : 0;
+  host.innerHTML = html; host.querySelector('.scroll').scrollTop = top;
+}
+$('#flyB').addEventListener('click', e => {
+  const b = e.target.closest('[data-a]');
+  if (b) {
+    const a = b.dataset.a, id = +b.dataset.id;
+    if (a === 'term') openJob = openJob === id ? null : id;
+    if (a === 'stop') confirmRun = id;
+    if (a === 'no') confirmRun = null;
+    if (a === 'yes') { Sim.actions.cancelRun(id); confirmRun = null; }
+    if (a === 'rerun') Sim.actions.rerunJob(id);
+    e.stopPropagation(); renderB(Sim.summary()); return;
+  }
+  const row = e.target.closest('.job');
+  if (row) { const id = +row.dataset.job; openJob = openJob === id ? null : id; renderB(Sim.summary()); }
+});
+
+// ---------------- C ----------------
+const shown = new Set(); const toasts = [];
+function renderC(s) {
+  $('#tipC').innerHTML = `<b>Runwatch</b><br>${s.busy}/${s.total} busy · ${s.waiting} waiting${s.waiting ? ` (oldest ${FS(s.oldest)})` : ''}${s.failedHour ? `<br><span style="color:#ff8a80">${s.failedHour} failed in the last hour</span>` : ''}<br><span style="color:#999">Click: dashboard</span>`;
+  for (const ev of Sim.events.slice().reverse()) {
+    if (shown.has(ev.id)) continue; shown.add(ev.id);
+    if (ev.kind === 'failed') toasts.push({ ...ev, ttl: 'Job failed' });
+  }
+  for (const j of Sim.queued()) {
+    const key = 'w' + j.runId;
+    if (!shown.has(key) && (Sim.now - j.queuedAt) / 1000 > 45 * 60) { shown.add(key); toasts.push({ id: key, kind: 'wait', ttl: 'Waiting more than 45 min', text: `${Sim.repos[j.repo].short} · run #${j.runId} (${Sim.runs.get(j.runId).branch}): ${Sim.queued(j.repo).filter(x=>x.runId===j.runId).length} jobs not started yet`, runId: j.runId }); }
+  }
+  while (toasts.length > 3) toasts.shift();
+  $('#toastC').innerHTML = toasts.map(t => `<div class="toast"><div class="app">${iconSVG(t.kind==='failed'?'fail':'wait').replace(/20/g,'14')} Runwatch</div><div class="ttl">${t.ttl}</div><div>${esc(t.text)}</div>
+    <div class="row">${t.kind === 'failed' ? `<button onclick="Sim.actions.rerunJob(${t.jobId})">Re-run</button><button onclick="location.href='dashboard.html#job=${t.jobId}'">Log</button>` : `<button onclick="Sim.actions.cancelRun(${t.runId})">Stop run</button><button onclick="location.href='dashboard.html#queue'">Queue</button>`}</div></div>`).join('');
+}
+$('#legend').innerHTML = [['idle','Idle','nothing running'],['run','Running','jobs running, short waits'],['wait','Queue backed up','badge = jobs waiting, oldest > 15 min'],['fail','Failed','a job failed in the last hour']]
+  .map(([st,a,b]) => `<div class="lg">${iconSVG(st)}<div><b>${a}</b>${b}</div></div>`).join('');
+
+$('#pushBtn').onclick = () => Sim.actions.push('example/app');
+let down = false, lastR = 0;
+addEventListener('mousedown', () => down = true, true);
+addEventListener('mouseup', () => setTimeout(() => down = false, 0), true);
+
+Sim.on(() => {
+  if (down || performance.now() - lastR < 500) return; lastR = performance.now();
+  const s = Sim.summary();
+  [['#icoA'],['#icoB'],['#icoC']].forEach(([id]) => icon($(id), s));
+  const clk = `${Sim.clock(Sim.now).slice(0,5)}<br>${new Date(Sim.now).toLocaleDateString()}`;
+  ['#clkA','#clkB','#clkC'].forEach(id => $(id).innerHTML = clk);
+  renderA(s); renderB(s); renderC(s);
+});
+</script>
+</body>
+</html>

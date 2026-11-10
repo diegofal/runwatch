@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Runwatch — dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0c0e10; --panel:#14171a; --panel2:#1a1e22; --line:#262b31; --ink:#e7e9ea; --dim:#8b939b; --faint:#59616a;
+    --run:#5ad1ff; --ok:#7bd88f; --bad:#ff6b5e; --wait:#ffb347; --cancel:#6d737b;
+    --mono:'JetBrains Mono',ui-monospace,monospace; --cond:'Barlow Condensed',sans-serif; --body:'Barlow',sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:14px;display:grid;grid-template-rows:auto 1fr;
+    background-image:linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);background-size:32px 32px}
+  /* top */
+  .top{display:flex;align-items:stretch;border-bottom:1px solid var(--line);background:rgba(12,14,16,.92);backdrop-filter:blur(8px);position:sticky;top:0;z-index:5}
+  .brand{padding:12px 22px;border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:center}
+  .brand h1{margin:0;font-family:var(--cond);font-weight:700;font-size:26px;letter-spacing:.04em;text-transform:uppercase;line-height:1}
+  .brand h1 span{color:var(--run)}
+  .brand small{font-family:var(--mono);font-size:10px;color:var(--faint)}
+  .facts{display:flex;flex:1}
+  .fact{padding:10px 20px;border-right:1px solid var(--line);min-width:120px}
+  .fact .k{font-family:var(--cond);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .fact .v{font-family:var(--cond);font-weight:700;font-size:30px;line-height:1.05;font-variant-numeric:tabular-nums}
+  .fact .v small{font-size:15px;color:var(--dim);font-weight:500}
+  .fact .s{font-size:11.5px;color:var(--dim)}
+  .tools{display:flex;align-items:center;gap:8px;padding:0 16px}
+  .btn{all:unset;cursor:pointer;font-family:var(--mono);font-size:11px;border:1px solid var(--line);border-radius:6px;padding:5px 10px;color:var(--ink);background:var(--panel);white-space:nowrap}
+  .btn:hover{border-color:var(--ink)}
+  .btn.stop{color:var(--bad);border-color:rgba(255,107,94,.4)} .btn.stop:hover{border-color:var(--bad);background:rgba(255,107,94,.08)}
+  .btn.go{color:var(--run);border-color:rgba(90,209,255,.4)} .btn.go:hover{border-color:var(--run)}
+  .btn.adm::after{content:"admin";font-size:9px;margin-left:6px;padding:0 4px;border-radius:3px;background:#2b3036;color:var(--dim)}
+  .main{display:grid;grid-template-columns:190px 1fr;min-height:0}
+  nav{border-right:1px solid var(--line);padding:14px 0;display:flex;flex-direction:column;gap:2px}
+  nav a{display:flex;justify-content:space-between;padding:9px 20px;color:var(--dim);text-decoration:none;font-family:var(--cond);font-size:17px;letter-spacing:.08em;text-transform:uppercase;border-left:2px solid transparent}
+  nav a:hover{color:var(--ink)}
+  nav a.on{color:var(--ink);border-left-color:var(--run);background:linear-gradient(90deg,rgba(90,209,255,.07),transparent)}
+  nav a b{font-family:var(--mono);font-size:11px;font-weight:500;color:var(--faint);align-self:center}
+  nav a.on b{color:var(--run)}
+  nav .repoF{margin-top:18px;padding:0 20px;display:flex;flex-direction:column;gap:6px}
+  nav .repoF .h{font-family:var(--cond);font-size:11.5px;letter-spacing:.14em;color:var(--faint);text-transform:uppercase}
+  nav label{display:flex;gap:8px;align-items:center;font-family:var(--mono);font-size:12px;cursor:pointer;color:var(--dim)}
+  nav label i{width:9px;height:9px;border-radius:2px}
+  nav .note{margin:auto 16px 4px;font-size:11.5px;color:var(--dim);line-height:1.45}
+  section.view{padding:20px 26px 60px;overflow:auto;min-width:0}
+  h2{font-family:var(--cond);font-weight:600;font-size:22px;letter-spacing:.06em;text-transform:uppercase;margin:0 0 4px}
+  .sub{color:var(--dim);margin:0 0 16px;font-size:13px}
+  .hide{display:none!important}
+
+  /* yard timeline */
+  .yard{border:1px solid var(--line);border-radius:10px;background:var(--panel);overflow:hidden}
+  .yhead{display:grid;grid-template-columns:200px 1fr 250px;border-bottom:1px solid var(--line);font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+  .yhead .ticks{position:relative;height:24px}
+  .yhead .ticks span{position:absolute;top:6px;transform:translateX(-50%)}
+  .lane{display:grid;grid-template-columns:200px 1fr 250px;border-bottom:1px solid rgba(255,255,255,.04);min-height:44px}
+  .lane:last-child{border-bottom:0}
+  .lane .who{padding:7px 14px;display:flex;flex-direction:column;justify-content:center;border-right:1px solid var(--line)}
+  .lane .who .n{font-family:var(--mono);font-size:12.5px;display:flex;align-items:center;gap:7px}
+  .lane .who .n i{width:7px;height:7px;border-radius:50%}
+  .lane .who .r{font-size:11.5px;color:var(--dim)}
+  .track{position:relative;background:repeating-linear-gradient(90deg,transparent 0,transparent calc(16.666% - 1px),rgba(255,255,255,.04) calc(16.666% - 1px),rgba(255,255,255,.04) 16.666%)}
+  .seg{position:absolute;top:9px;bottom:9px;border-radius:4px;cursor:pointer;overflow:hidden;font-size:10.5px;font-family:var(--mono);color:#0b0d0f;padding:0 5px;line-height:26px;white-space:nowrap;min-width:2px}
+  .seg:hover{filter:brightness(1.2);z-index:2;outline:1px solid #fff}
+  .seg.success{background:#3b6b48;color:#cfe9d5}
+  .seg.failure{background:var(--bad);color:#200}
+  .seg.cancelled{background:repeating-linear-gradient(135deg,#3a3f45 0 4px,#30353a 4px 8px);color:#aab}
+  .seg.live{background:linear-gradient(90deg,rgba(90,209,255,.35),var(--run));color:#04161f;font-weight:500;box-shadow:0 0 18px rgba(90,209,255,.35)}
+  .nowline{position:absolute;top:0;bottom:0;right:0;width:2px;background:var(--run);box-shadow:0 0 8px var(--run)}
+  .lane .cur{padding:6px 14px;border-left:1px solid var(--line);font-size:12px;display:flex;flex-direction:column;justify-content:center;cursor:pointer;min-width:0}
+  .lane .cur:hover{background:var(--panel2)}
+  .lane .cur .a{display:flex;gap:6px;white-space:nowrap}
+  .lane .cur .a b{font-weight:600;overflow:hidden;text-overflow:ellipsis}
+  .lane .cur .a span{margin-left:auto;font-family:var(--mono);font-size:11px;font-variant-numeric:tabular-nums}
+  .lane .cur .b{color:var(--dim);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pbar{height:3px;background:#262b30;border-radius:2px;margin-top:4px;overflow:hidden}
+  .pbar i{display:block;height:100%;background:var(--run)}
+  .pbar.over i{background:var(--wait)}
+  .legend{display:flex;gap:16px;margin:10px 2px 26px;font-size:12px;color:var(--dim)}
+  .legend span{display:flex;gap:6px;align-items:center}
+  .legend i{width:16px;height:8px;border-radius:2px;display:inline-block}
+  .grid2{display:grid;grid-template-columns:1.3fr 1fr;gap:18px}
+  .card{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px 16px}
+  .card h3{font-family:var(--cond);font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:var(--dim);margin:0 0 10px;font-weight:600}
+  .ev{display:grid;grid-template-columns:62px 14px 1fr;gap:8px;font-size:12.5px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.03);align-items:baseline}
+  .ev .t{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .press{display:grid;gap:12px}
+  .pr .l{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:4px}
+  .pr .l .nm{font-family:var(--mono)}
+  .pr .l .q{color:var(--dim)}
+  .pr .l .q b{color:var(--wait)}
+  .spark{height:34px;display:flex;align-items:flex-end;gap:2px}
+  .spark i{flex:1;background:var(--wait);opacity:.75;border-radius:1px 1px 0 0;min-height:1px}
+
+  /* queue board */
+  .board{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#0a0b0c}
+  .board table{width:100%;border-collapse:collapse}
+  .board th{font-family:var(--cond);font-weight:600;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint);text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+  .board td{padding:10px 14px;border-bottom:1px solid rgba(255,255,255,.04);vertical-align:middle}
+  .board tr.runrow td{font-family:var(--cond);font-size:19px;letter-spacing:.04em}
+  .board tr.runrow:hover{background:rgba(255,179,71,.04)}
+  .board .pos{font-family:var(--mono);font-size:12px;color:var(--faint);width:40px}
+  .board .waited{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums;color:var(--wait)}
+  .board .waited.hot{color:var(--bad)}
+  .board .waited.cool{color:var(--ink)}
+  .board .rp{font-family:var(--mono);font-size:12px}
+  .board .br{font-family:var(--mono);font-size:12.5px;color:var(--ink)}
+  .board .jobs{font-family:var(--body);font-size:12px;color:var(--dim);letter-spacing:0;max-width:620px}
+  .pill{display:inline-block;font-family:var(--mono);font-size:10.5px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);color:var(--dim);margin:1px 3px 1px 0}
+  .pill.q{border-color:rgba(255,179,71,.4);color:var(--wait)}
+  .pill.r{border-color:rgba(90,209,255,.5);color:var(--run)}
+  .pill.f{border-color:rgba(255,107,94,.5);color:var(--bad)}
+  .pill.ok{border-color:rgba(123,216,143,.4);color:var(--ok)}
+  .inl{display:flex;gap:6px;align-items:center;justify-content:flex-end}
+  .confirm{font-family:var(--body);font-size:12px;letter-spacing:0;color:var(--bad)}
+
+  /* history */
+  .tiles{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+  .tile{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:12px 14px}
+  .tile .k{font-family:var(--cond);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .tile .v{font-family:var(--cond);font-weight:700;font-size:28px;font-variant-numeric:tabular-nums}
+  .tile .s{font-size:11.5px;color:var(--dim)}
+  .filters{display:flex;gap:6px;margin-bottom:10px}
+  .filters .btn.on{border-color:var(--run);color:var(--run)}
+  table.hist{width:100%;border-collapse:collapse;font-size:12.5px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  table.hist th{font-family:var(--cond);font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);font-weight:600}
+  table.hist td{padding:7px 12px;border-bottom:1px solid rgba(255,255,255,.035)}
+  table.hist tr{cursor:pointer} table.hist tbody tr:hover{background:var(--panel2)}
+  .num{font-family:var(--mono);font-size:11.5px;font-variant-numeric:tabular-nums;text-align:right}
+  .res{font-family:var(--mono);font-size:11px}
+  .res.success{color:var(--ok)} .res.failure{color:var(--bad)} .res.cancelled{color:var(--cancel)}
+  .wbar{display:inline-block;height:6px;border-radius:2px;background:var(--wait);vertical-align:middle;margin-right:2px;opacity:.8}
+  .rbar{display:inline-block;height:6px;border-radius:2px;background:var(--run);vertical-align:middle;opacity:.8}
+
+  /* runners */
+  .rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+  .rc{border:1px solid var(--line);border-radius:10px;background:var(--panel);padding:14px;display:flex;flex-direction:column;gap:8px}
+  .rc .h{display:flex;align-items:center;gap:8px}
+  .rc .h b{font-family:var(--mono);font-size:14px}
+  .rc .h .st{margin-left:auto;font-family:var(--mono);font-size:10.5px;padding:2px 7px;border-radius:99px}
+  .st.on{background:rgba(123,216,143,.12);color:var(--ok)} .st.busy{background:rgba(90,209,255,.12);color:var(--run)} .st.off{background:rgba(255,107,94,.12);color:var(--bad)}
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px}
+  .kv span:nth-child(odd){color:var(--dim)}
+  .kv span:nth-child(even){font-family:var(--mono);font-size:11.5px;text-align:right}
+  .rc .acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
+
+  /* drawer */
+  .scrim{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9}
+  .drawer{position:fixed;top:0;right:0;bottom:0;width:min(980px,78vw);background:#0f1214;border-left:1px solid var(--line);z-index:10;display:grid;grid-template-rows:auto auto 1fr;box-shadow:-20px 0 60px rgba(0,0,0,.5);animation:slide .22s ease-out}
+  @keyframes slide{from{transform:translateX(40px);opacity:.3}}
+  .dh{padding:16px 20px 12px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
+  .dh .t{flex:1;min-width:0}
+  .dh h3{margin:0;font-family:var(--cond);font-size:28px;font-weight:700;letter-spacing:.02em;display:flex;gap:10px;align-items:center}
+  .dh .meta{font-family:var(--mono);font-size:11.5px;color:var(--dim);margin-top:4px}
+  .stat{font-family:var(--mono);font-size:11px;padding:2px 8px;border-radius:99px;font-weight:500}
+  .stat.in_progress{background:rgba(90,209,255,.15);color:var(--run)} .stat.queued{background:rgba(255,179,71,.15);color:var(--wait)}
+  .stat.success{background:rgba(123,216,143,.15);color:var(--ok)} .stat.failure{background:rgba(255,107,94,.15);color:var(--bad)} .stat.cancelled{background:#22262b;color:var(--dim)}
+  .dacts{display:flex;gap:6px;flex-wrap:wrap}
+  .times{display:grid;grid-template-columns:repeat(5,1fr);border-bottom:1px solid var(--line)}
+  .times div{padding:9px 20px;border-right:1px solid var(--line)}
+  .times div:last-child{border-right:0}
+  .times .k{font-family:var(--cond);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+  .times .v{font-family:var(--mono);font-size:15px;font-variant-numeric:tabular-nums}
+  .dbody{display:grid;grid-template-columns:250px 1fr;min-height:0}
+  .steps{border-right:1px solid var(--line);overflow:auto;padding:8px 0}
+  .step{display:grid;grid-template-columns:18px 1fr auto;gap:8px;padding:6px 14px;font-size:12.5px;cursor:pointer;align-items:center}
+  .step:hover{background:var(--panel2)}
+  .step .ic{font-size:12px;text-align:center}
+  .step .d{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .step.in_progress{background:rgba(90,209,255,.06)} .step.in_progress .ic{color:var(--run)}
+  .step.pending{color:var(--faint)}
+  .spin{display:inline-block;width:10px;height:10px;border:2px solid var(--run);border-right-color:transparent;border-radius:50%;animation:sp 1s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  .term{display:grid;grid-template-rows:auto 1fr;min-height:0;background:#060708}
+  .tbar{display:flex;gap:8px;align-items:center;padding:7px 12px;border-bottom:1px solid #1b1f23;font-size:12px;color:var(--dim)}
+  .tbar input[type=search]{all:unset;font-family:var(--mono);font-size:11.5px;border:1px solid #23282d;border-radius:5px;padding:3px 8px;width:180px;color:var(--ink)}
+  .tbar label{display:flex;gap:5px;align-items:center;cursor:pointer}
+  .tbar .src{margin-left:auto;font-family:var(--mono);font-size:10.5px;color:var(--faint)}
+  .tout{overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.55;padding:8px 0 30px;color:#cdd5da}
+  .ln{display:grid;grid-template-columns:44px auto 1fr;gap:10px;padding:0 14px;white-space:pre-wrap;word-break:break-all}
+  .ln:hover{background:#111518}
+  .ln .no{color:#3b434b;text-align:right;user-select:none}
+  .ln .ts{color:#4c565f;user-select:none}
+  .tout.nots .ts{display:none}
+  .ln.group{color:#fff;font-weight:500;margin-top:6px}
+  .ln.group .tx::before{content:"▾ ";color:var(--run)}
+  .ln.cmd .tx{color:var(--run)} .ln.ok .tx{color:#9fd8a9} .ln.err .tx{color:var(--bad)} .ln.warn .tx{color:var(--wait)} .ln.dim .tx{color:#69737c}
+  .ln mark{background:rgba(255,179,71,.35);color:inherit}
+  .follow{position:absolute;right:30px;bottom:24px}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><h1>Run<span>watch</span></h1><small>prototype · made-up data · 8× clock</small></div>
+  <div class="facts" id="facts"></div>
+  <div class="tools"><button class="btn" id="push">+ simulate a push</button><a class="btn" href="tray.html" style="text-decoration:none">← tray</a></div>
+</div>
+<div class="main">
+  <nav id="nav">
+    <a href="#now" data-v="now">Now <b id="nNow"></b></a>
+    <a href="#queue" data-v="queue">Queue <b id="nQueue"></b></a>
+    <a href="#history" data-v="history">History <b id="nHist"></b></a>
+    <a href="#runners" data-v="runners">Runners <b id="nRun"></b></a>
+    <div class="repoF"><div class="h">Repos</div><div id="repoF"></div></div>
+    <div class="note">Stop / re-run → GitHub API (one sign-in per account).<br>Terminal → this PC's runner logs, live.<br>Start/stop a runner → Windows asks for admin.</div>
+  </nav>
+  <section class="view" id="v-now"></section>
+  <section class="view hide" id="v-queue"></section>
+  <section class="view hide" id="v-history"></section>
+  <section class="view hide" id="v-runners"></section>
+</div>
+<div id="drawerHost"></div>
+
+<script src="mock.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const F = Sim.fmtDur, FS = Sim.fmtShort, R = Sim.repos;
+const WIN = 60 * 60 * 1000;
+const repoOn = new Set(Object.keys(R));
+let view = 'now', jobOpen = null, confirmRun = null, histFilter = 'all';
+const vis = j => repoOn.has(j.repo);
+const sec = (a, b) => ((b ?? Sim.now) - a) / 1000;
+
+// ---------- top facts ----------
+function renderFacts() {
+  const s = Sim.summary();
+  const done = Sim.completed().filter(j => Sim.now - j.finishedAt < 2 * 3600e3);
+  const wasted = done.filter(j => j.conclusion === 'cancelled').reduce((t, j) => t + sec(j.startedAt, j.finishedAt), 0);
+  const busySec = done.reduce((t, j) => t + sec(j.startedAt, j.finishedAt), 0) || 1;
+  $('#facts').innerHTML = `
+    <div class="fact"><div class="k">Running</div><div class="v">${s.busy}<small> / ${s.total}</small></div><div class="s">${s.total - s.busy} idle${s.online < s.total ? ` · ${s.total - s.online} stopped` : ''}</div></div>
+    <div class="fact"><div class="k">Waiting</div><div class="v" style="color:${s.waiting ? 'var(--wait)' : ''}">${s.waiting}</div><div class="s">jobs not started</div></div>
+    <div class="fact"><div class="k">Oldest wait</div><div class="v">${s.waiting ? F(s.oldest) : '—'}</div><div class="s">${s.waiting ? Sim.repos[Sim.queued()[0].repo].short : ''}</div></div>
+    <div class="fact"><div class="k">Failed · 1 h</div><div class="v" style="color:${s.failedHour ? 'var(--bad)' : ''}">${s.failedHour}</div><div class="s">jobs</div></div>
+    <div class="fact"><div class="k">Cancelled runs · 2 h</div><div class="v">${FS(wasted)}</div><div class="s">${Math.round(wasted / busySec * 100)}% of runner time</div></div>`;
+  $('#nNow').textContent = s.busy; $('#nQueue').textContent = s.waiting; $('#nRun').textContent = s.total;
+  $('#nHist').textContent = Sim.completed().length;
+}
+
+// ---------- NOW ----------
+function renderNow() {
+  const t0 = Sim.now - WIN;
+  const x = t => Math.max(0, (t - t0) / WIN * 100);
+  const lanes = Sim.runners.filter(r => repoOn.has(r.repo)).map(r => {
+    const segs = r.history.filter(h => h.to > t0).map(h => { const j = Sim.jobs.get(h.jobId); const l = x(h.from), w = x(h.to) - l;
+      return `<div class="seg ${h.conclusion}" style="left:${l}%;width:${w}%" data-job="${h.jobId}" title="${esc(j.name)} · ${h.conclusion} · ${F((h.to - h.from) / 1000)}">${w > 7 ? esc(j.name) : ''}</div>`; }).join('');
+    const j = r.jobId && Sim.jobs.get(r.jobId);
+    let live = '', cur = `<div class="cur"><div class="b">${r.service === 'running' ? 'idle — nothing waiting for ' + R[r.repo].short : 'service stopped'}</div></div>`;
+    if (j) {
+      const l = x(j.startedAt), el = sec(j.startedAt), p = Math.min(100, el / j.usual * 100), st = j.steps[Sim.stepIndex(j)] || {};
+      live = `<div class="seg live" style="left:${l}%;width:${100 - l}%" data-job="${j.id}">${100 - l > 7 ? esc(j.name) : ''}</div>`;
+      cur = `<div class="cur" data-job="${j.id}"><div class="a"><b>${esc(j.name)}</b><span style="color:${el > j.usual ? 'var(--wait)' : ''}">${F(el)}</span></div>
+        <div class="b">${Sim.stepIndex(j) + 1}/${j.steps.length} ${esc(st.name || '')} · usual ${FS(j.usual)} · ${esc(Sim.runs.get(j.runId).branch)}</div>
+        <div class="pbar ${el > j.usual ? 'over' : ''}"><i style="width:${p}%"></i></div></div>`;
+    }
+    const dot = r.service !== 'running' ? 'var(--bad)' : j ? 'var(--run)' : 'var(--ok)';
+    return `<div class="lane"><div class="who"><span class="n"><i style="background:${dot}"></i>${r.name}</span><span class="r">${r.repo}</span></div>
+      <div class="track">${segs}${live}<div class="nowline"></div></div>${cur}</div>`;
+  }).join('');
+  const ticks = [60, 50, 40, 30, 20, 10, 0].map((m, i) => `<span style="left:${i / 6 * 100}%">${m ? '−' + m + 'm' : 'now'}</span>`).join('');
+  const s = Sim.summary();
+  // queue depth per repo over the last hour (reconstructed from queued/started times)
+  const press = s.byRepo.filter(r => repoOn.has(r.repo)).map(r => {
+    const jobs = [...Sim.jobs.values()].filter(j => j.repo === r.repo);
+    const bars = Array.from({ length: 30 }, (_, i) => { const t = t0 + (i + 1) / 30 * WIN; return jobs.filter(j => j.queuedAt <= t && (j.status === 'queued' || (j.startedAt > t))).length; });
+    const mx = Math.max(10, ...bars);
+    return `<div class="pr"><div class="l"><span class="nm" style="color:${r.color}">${r.repo}</span><span class="q">${r.waiting ? `<b>${r.waiting} waiting</b> · oldest ${F((Sim.now - r.oldest) / 1000)} · ` : ''}${r.busy}/${r.runners} busy</span></div>
+      <div class="spark">${bars.map(b => `<i style="height:${b / mx * 100}%"></i>`).join('')}</div></div>`;
+  }).join('');
+  const icon = { failed: ['✕', 'var(--bad)'], superseded: ['⤳', 'var(--dim)'], cancelled: ['■', 'var(--bad)'], rerun: ['↻', 'var(--run)'], pushed: ['＋', 'var(--wait)'], service: ['⏻', 'var(--dim)'] };
+  const evs = Sim.events.filter(e => true).slice(0, 12).map(e => { const [c, col] = icon[e.kind] || ['·', 'var(--dim)'];
+    return `<div class="ev"><span class="t">${Sim.clock(e.t)}</span><span style="color:${col}">${c}</span><span>${esc(e.text)}</span></div>`; }).join('');
+  $('#v-now').innerHTML = `<h2>Now</h2><p class="sub">Each row is a runner. The bars are the jobs it ran in the last hour, and the right column is what it's running now. Click any bar to open the job.</p>
+    <div class="yard"><div class="yhead"><span style="padding:6px 14px">runner</span><div class="ticks">${ticks}</div><span style="padding:6px 14px">running now</span></div>${lanes}</div>
+    <div class="legend"><span><i style="background:var(--run)"></i>running</span><span><i style="background:#3b6b48"></i>passed</span><span><i style="background:var(--bad)"></i>failed</span><span><i style="background:repeating-linear-gradient(135deg,#3a3f45 0 4px,#30353a 4px 8px)"></i>cancelled</span><span style="margin-left:auto">progress bar = time so far ÷ usual time (median of past runs of the job)</span></div>
+    <div class="grid2"><div class="card"><h3>Waiting per repo · last hour</h3><div class="press">${press}</div></div><div class="card"><h3>What happened</h3>${evs}</div></div>`;
+}
+
+// ---------- QUEUE ----------
+function renderQueue() {
+  const q = Sim.queued().filter(vis);
+  const runs = [...new Set(q.map(j => j.runId))].map(id => Sim.runs.get(id));
+  const rows = runs.map((run, i) => {
+    const jobs = run.jobIds.map(id => Sim.jobs.get(id));
+    const wq = jobs.filter(j => j.status === 'queued'), wr = jobs.filter(j => j.status === 'in_progress'), wd = jobs.filter(j => j.status === 'completed');
+    const w = sec(Math.min(...wq.map(j => j.queuedAt)));
+    const cls = w > 45 * 60 ? 'hot' : w > 15 * 60 ? '' : 'cool';
+    const act = confirmRun === run.id
+      ? `<span class="confirm">Cancel ${wq.length + wr.length} jobs?</span><button class="btn stop" data-a="yes" data-id="${run.id}">Stop run</button><button class="btn" data-a="no">Keep</button>`
+      : `<button class="btn stop" data-a="stop" data-id="${run.id}">■ stop run</button>`;
+    return `<tr class="runrow"><td class="pos">${String(i + 1).padStart(2, '0')}</td><td class="waited ${cls}">${F(w)}</td>
+      <td><span class="rp" style="color:${R[run.repo].color}">${R[run.repo].short}</span></td>
+      <td><span class="br">${esc(run.branch)}</span><div style="font-family:var(--mono);font-size:10.5px;color:var(--faint);letter-spacing:0">#${run.id} · ${run.event}${run.pr ? ' #' + run.pr : ''} · ${run.actor}</div></td>
+      <td class="jobs">${wr.length ? `<span class="pill r">${wr.length} running</span>` : ''}<span class="pill q">${wq.length} waiting</span>${wd.length ? `<span class="pill ok">${wd.length} done</span>` : ''}<br>${wq.slice(0, 6).map(j => esc(j.name)).join(' · ')}${wq.length > 6 ? ` · +${wq.length - 6}` : ''}</td>
+      <td><div class="inl">${act}</div></td></tr>`;
+  }).join('');
+  const s = Sim.summary();
+  $('#v-queue').innerHTML = `<h2>Queue</h2><p class="sub">Runs with jobs that haven't started, oldest first. Waits turn amber after 15 min and red after 45 min. A runner only takes jobs from its own repo, so the queue is shared only within a repo.</p>
+    <div style="display:flex;gap:10px;margin-bottom:14px">${s.byRepo.filter(r => repoOn.has(r.repo)).map(r => `<div class="tile" style="flex:1"><div class="k" style="color:${r.color}">${r.repo}</div><div class="v">${r.waiting}<small style="font-size:14px;color:var(--dim);font-weight:500"> waiting · ${r.busy}/${r.runners} busy</small></div><div class="s">${r.waiting ? 'oldest ' + F((Sim.now - r.oldest) / 1000) : 'nothing waiting'}</div></div>`).join('')}</div>
+    <div class="board"><table><thead><tr><th>#</th><th>Waited</th><th>Repo</th><th>Branch · run</th><th>Jobs</th><th></th></tr></thead><tbody>${rows || '<tr><td colspan=6 style="padding:30px;color:var(--dim);text-align:center">Nothing waiting.</td></tr>'}</tbody></table></div>`;
+}
+
+// ---------- HISTORY ----------
+function median(a) { if (!a.length) return 0; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; }
+function renderHistory() {
+  const all = Sim.completed().filter(vis);
+  const list = all.filter(j => histFilter === 'all' || j.conclusion === histFilter);
+  const waits = all.map(j => sec(j.queuedAt, j.startedAt)), runs = all.map(j => sec(j.startedAt, j.finishedAt));
+  const c = k => all.filter(j => j.conclusion === k).length;
+  const mxW = Math.max(...waits, 1), mxR = Math.max(...runs, 1);
+  $('#v-history').innerHTML = `<h2>History</h2><p class="sub">Finished jobs. "Waited" is the time from queued to picked up by a runner. "Ran" is the time on the runner.</p>
+    <div class="tiles">
+      <div class="tile"><div class="k">Finished</div><div class="v">${all.length}</div><div class="s">jobs</div></div>
+      <div class="tile"><div class="k">Passed</div><div class="v" style="color:var(--ok)">${c('success')}</div></div>
+      <div class="tile"><div class="k">Failed</div><div class="v" style="color:var(--bad)">${c('failure')}</div><div class="s">${all.length ? Math.round(c('failure') / all.length * 100) : 0}% of finished</div></div>
+      <div class="tile"><div class="k">Cancelled</div><div class="v">${c('cancelled')}</div><div class="s">${all.filter(j => j.why === 'superseded').length} by a newer push</div></div>
+      <div class="tile"><div class="k">Median wait / run</div><div class="v">${FS(median(waits))} <small style="font-size:16px;color:var(--dim)">/ ${FS(median(runs))}</small></div></div>
+    </div>
+    <div class="filters">${['all', 'failure', 'cancelled', 'success'].map(f => `<button class="btn ${histFilter === f ? 'on' : ''}" data-f="${f}">${f === 'all' ? 'all' : f === 'failure' ? 'failed' : f === 'success' ? 'passed' : 'cancelled'}</button>`).join('')}</div>
+    <table class="hist"><thead><tr><th>Finished</th><th>Repo</th><th>Job</th><th>Branch</th><th>Runner</th><th style="text-align:right">Waited</th><th style="text-align:right">Ran</th><th>Result</th><th></th></tr></thead><tbody>
+    ${list.slice(0, 120).map(j => { const w = sec(j.queuedAt, j.startedAt), r = sec(j.startedAt, j.finishedAt);
+      return `<tr data-job="${j.id}"><td class="num" style="text-align:left">${Sim.clock(j.finishedAt).slice(0, 5)}</td><td style="font-family:var(--mono);font-size:11.5px;color:${R[j.repo].color}">${R[j.repo].short}</td>
+      <td>${esc(j.name)}${j.attempt > 1 ? ` <span class="pill">attempt ${j.attempt}</span>` : ''}</td><td style="font-family:var(--mono);font-size:11px;color:var(--dim)">${esc(Sim.runs.get(j.runId).branch)}</td>
+      <td style="font-family:var(--mono);font-size:11.5px">${j.runner || '—'}</td>
+      <td class="num"><span class="wbar" style="width:${w / mxW * 60}px"></span> ${FS(w)}</td><td class="num"><span class="rbar" style="width:${r / mxR * 60}px"></span> ${FS(r)}</td>
+      <td class="res ${j.conclusion}">${j.conclusion}${j.why === 'superseded' ? ' <span style="color:var(--faint)">(newer push)</span>' : ''}</td>
+      <td>${j.conclusion !== 'success' ? `<button class="btn go" data-a="rerun" data-id="${j.id}">↻</button>` : ''}</td></tr>`; }).join('')}
+    </tbody></table>`;
+}
+
+// ---------- RUNNERS ----------
+function renderRunners() {
+  $('#v-runners').innerHTML = `<h2>Runners</h2><p class="sub">The Windows services on this PC (<code style="font-family:var(--mono);font-size:12px">D:\\actions-runner\\*</code>). Logs and checkouts grow over time, so their size is shown here.</p>
+    <div class="rgrid">${Sim.runners.filter(r => repoOn.has(r.repo)).map(r => {
+      const j = r.jobId && Sim.jobs.get(r.jobId);
+      const h2 = r.history.filter(h => h.to > Sim.now - 2 * 3600e3);
+      const busy = h2.reduce((t, h) => t + (Math.min(h.to, Sim.now) - Math.max(h.from, Sim.now - 2 * 3600e3)), 0) / (2 * 3600e3) * 100;
+      const st = r.service !== 'running' ? ['off', 'stopped'] : j ? ['busy', 'busy'] : ['on', 'idle'];
+      return `<div class="rc"><div class="h"><b>${r.name}</b><span style="font-family:var(--mono);font-size:11px;color:${R[r.repo].color}">${r.repo}</span><span class="st ${st[0]}">${st[1]}</span></div>
+        <div class="kv"><span>Now</span><span>${j ? esc(j.name) + ' · ' + FS(sec(j.startedAt)) : '—'}</span>
+        <span>Busy · last 2 h</span><span>${Math.round(busy)}% · ${h2.length} jobs</span>
+        <span>Logs (_diag)</span><span>${r.diagMB} MB</span><span>Checkouts (_work)</span><span>${r.workMB} MB</span>
+        <span>Service</span><span>actions.runner.…${r.name}</span><span>Version</span><span>${r.version}</span></div>
+        <div class="acts">${r.service === 'running' ? `<button class="btn adm" data-a="svc" data-id="${r.name}" data-on="0">stop service</button>` : `<button class="btn adm go" data-a="svc" data-id="${r.name}" data-on="1">start service</button>`}<button class="btn">open folder</button><button class="btn">diag log</button></div></div>`;
+    }).join('')}</div>`;
+}
+
+// ---------- DRAWER ----------
+let rendered = { id: null, n: 0, first: null }, follow = true, showTs = true, search = '';
+function openJob(id) { jobOpen = id; rendered = { id: null, n: 0 }; follow = true; search = ''; if (location.hash.startsWith('#job')) history.replaceState(null, '', '#' + view); renderDrawer(true); }
+function closeJob() { jobOpen = null; $('#drawerHost').innerHTML = ''; }
+function lineHTML(l, i) {
+  let tx = esc(l.text); if (search) tx = tx.split(esc(search)).join(`<mark>${esc(search)}</mark>`);
+  return `<div class="ln ${l.cls === 'group' ? 'group' : l.cls}"><span class="no">${i + 1}</span><span class="ts">${Sim.clock(l.t)}</span><span class="tx">${tx}</span></div>`;
+}
+function renderDrawer(full) {
+  if (!jobOpen) return;
+  const j = Sim.jobs.get(jobOpen); const run = Sim.runs.get(j.runId);
+  const live = j.status !== 'completed';
+  const runLive = run.jobIds.some(id => Sim.jobs.get(id).status !== 'completed');
+  const anyBad = run.jobIds.some(id => { const x = Sim.jobs.get(id); return x.status === 'completed' && x.conclusion !== 'success'; });
+  const waited = j.status === 'queued' ? sec(j.queuedAt) : sec(j.queuedAt, j.startedAt);
+  const ran = j.status === 'queued' ? null : sec(j.startedAt, j.finishedAt || Sim.now);
+  const head = `<div class="dh"><div class="t"><h3>${esc(j.name)} <span class="stat ${j.status === 'completed' ? j.conclusion : j.status}">${j.status === 'completed' ? j.conclusion : j.status.replace('_', ' ')}</span></h3>
+      <div class="meta">${j.repo} · ${esc(run.branch)} @ ${run.sha} · run #${run.id}${j.attempt > 1 ? ' · attempt ' + j.attempt : ''} · ${run.event}${run.pr ? ' #' + run.pr : ''} · ${run.actor}${j.runner ? ' · on ' + j.runner : ''}</div></div>
+      <div class="dacts">
+        ${runLive ? (confirmRun === run.id ? `<span class="confirm" style="align-self:center">Cancel the run's unfinished jobs?</span><button class="btn stop" data-a="yes" data-id="${run.id}">Stop run</button><button class="btn" data-a="no">Keep</button>` : `<button class="btn stop" data-a="stop" data-id="${run.id}">■ stop run</button>`) : ''}
+        ${!live ? `<button class="btn go" data-a="rerunOpen" data-id="${j.id}">↻ re-run this job</button>` : ''}
+        ${!runLive && anyBad ? `<button class="btn go" data-a="rerunFailed" data-id="${run.id}">↻ re-run failed jobs</button>` : ''}
+        <button class="btn">copy log</button><button class="btn">open on GitHub ↗</button><button class="btn" data-a="close">✕</button></div></div>
+    <div class="times"><div><div class="k">Queued</div><div class="v">${Sim.clock(j.queuedAt)}</div></div><div><div class="k">Waited</div><div class="v" style="color:${waited > 900 ? 'var(--wait)' : ''}">${F(waited)}</div></div>
+      <div><div class="k">${live ? 'Running for' : 'Ran'}</div><div class="v">${ran == null ? '—' : F(ran)}</div></div><div><div class="k">Usual</div><div class="v">${F(j.usual)}</div></div>
+      <div><div class="k">Step</div><div class="v">${j.status === 'queued' ? '—' : Math.min(Sim.stepIndex(j) + 1, j.steps.length) + ' / ' + j.steps.length}</div></div></div>`;
+  const steps = j.steps.map((s, i) => { const ic = s.status === 'in_progress' ? '<span class="spin"></span>' : s.status === 'pending' ? '○' : s.conclusion === 'success' ? '<span style="color:var(--ok)">✓</span>' : s.conclusion === 'failure' ? '<span style="color:var(--bad)">✕</span>' : s.conclusion === 'cancelled' ? '<span style="color:var(--bad)">■</span>' : '<span style="color:var(--faint)">⊘</span>';
+    const d = s.status === 'in_progress' ? F(sec(s.startedAt)) : s.finishedAt && s.startedAt ? F((s.finishedAt - s.startedAt) / 1000) : '';
+    return `<div class="step ${s.status}" data-step="${esc(s.name)}"><span class="ic">${ic}</span><span>${esc(s.name)}</span><span class="d">${d}</span></div>`; }).join('');
+  const host = $('#drawerHost');
+  if (full || !host.querySelector('.drawer')) {
+    host.innerHTML = `<div class="scrim" data-a="close"></div><div class="drawer"><div id="dhead">${head}</div><div></div>
+      <div class="dbody"><div class="steps" id="dsteps">${steps}</div>
+      <div class="term"><div class="tbar"><input type="search" id="tsearch" placeholder="find in log"><label><input type="checkbox" id="tts" ${showTs ? 'checked' : ''}> times</label><label><input type="checkbox" id="tfol" ${follow ? 'checked' : ''}> follow</label>
+        <span class="src">${live ? 'live · D:\\actions-runner\\' + (j.runner || '…') + '\\_diag\\pages' : 'from GitHub (job logs API)'}</span></div>
+      <div class="tout ${showTs ? '' : 'nots'}" id="tout"></div></div></div></div>`;
+    rendered = { id: j.id, n: 0, first: null };
+    $('#tsearch').oninput = e => { search = e.target.value; rendered.n = 0; $('#tout').innerHTML = ''; renderDrawer(false); };
+    $('#tts').onchange = e => { showTs = e.target.checked; $('#tout').classList.toggle('nots', !showTs); };
+    $('#tfol').onchange = e => { follow = e.target.checked; };
+    $('#tout').addEventListener('scroll', e => { const t = e.target; const atEnd = t.scrollHeight - t.scrollTop - t.clientHeight < 30; if (!atEnd && follow) { follow = false; $('#tfol').checked = false; } });
+  } else {
+    $('#dhead').innerHTML = head; $('#dsteps').innerHTML = steps;
+  }
+  const out = $('#tout');
+  if (j.status === 'queued') { out.innerHTML = `<div class="ln dim"><span class="no"></span><span class="ts"></span><span class="tx">Waiting for a runner. ${Sim.queued(j.repo).findIndex(x => x.id === j.id) + 1} in line for ${R[j.repo].short} (${R[j.repo].runners} runners).</span></div>`; rendered.n = 0; return; }
+  if (rendered.first !== j.log[0]) { rendered.n = 0; rendered.first = j.log[0]; out.innerHTML = ''; }
+  const lines = search ? j.log.map((l, i) => [l, i]).filter(([l]) => l.cls === 'group' || l.text.toLowerCase().includes(search.toLowerCase())) : j.log.map((l, i) => [l, i]);
+  if (lines.length > rendered.n) {
+    out.insertAdjacentHTML('beforeend', lines.slice(rendered.n).map(([l, i]) => lineHTML(l, i)).join(''));
+    rendered.n = lines.length;
+    if (follow) out.scrollTop = out.scrollHeight;
+  }
+}
+
+// ---------- wiring ----------
+function setView(v) { view = v; document.querySelectorAll('#nav a').forEach(a => a.classList.toggle('on', a.dataset.v === v)); ['now', 'queue', 'history', 'runners'].forEach(k => $('#v-' + k).classList.toggle('hide', k !== v)); renderAll(); }
+function route() { const h = location.hash.slice(1); if (h.startsWith('job=')) { setView('now'); openJob(+h.slice(4)); return; } setView(['now', 'queue', 'history', 'runners'].includes(h) ? h : 'now'); }
+addEventListener('hashchange', route);
+$('#repoF').innerHTML = Object.entries(R).map(([k, r]) => `<label><input type="checkbox" checked data-repo="${k}" style="display:none"><i style="background:${r.color}"></i>${k}</label>`).join('');
+$('#repoF').addEventListener('click', e => { const l = e.target.closest('label'); if (!l) return; e.preventDefault(); const k = l.querySelector('input').dataset.repo; repoOn.has(k) ? repoOn.delete(k) : repoOn.add(k); l.style.opacity = repoOn.has(k) ? 1 : .35; renderAll(); });
+$('#push').onclick = () => { Sim.actions.push('example/app'); renderAll(); };
+document.addEventListener('click', e => {
+  const t = e.target.closest('[data-a]');
+  if (t) {
+    const a = t.dataset.a, id = t.dataset.id;
+    if (a === 'close') return closeJob();
+    if (a === 'stop') confirmRun = +id;
+    if (a === 'no') confirmRun = null;
+    if (a === 'yes') { Sim.actions.cancelRun(+id); confirmRun = null; }
+    if (a === 'rerun') Sim.actions.rerunJob(+id);
+    if (a === 'rerunOpen') { const n = Sim.actions.rerunJob(+id); openJob(n); return; }
+    if (a === 'rerunFailed') Sim.actions.rerunFailed(+id);
+    if (a === 'svc') Sim.actions.setService(id, t.dataset.on === '1');
+    renderAll(); renderDrawer(false); return;
+  }
+  const f = e.target.closest('[data-f]'); if (f) { histFilter = f.dataset.f; renderHistory(); return; }
+  const j = e.target.closest('[data-job]'); if (j) openJob(+j.dataset.job);
+});
+addEventListener('keydown', e => { if (e.key === 'Escape') closeJob(); });
+let down = false, last = 0;
+addEventListener('mousedown', () => down = true, true);
+addEventListener('mouseup', () => setTimeout(() => down = false, 0), true);
+function renderAll() { renderFacts(); ({ now: renderNow, queue: renderQueue, history: renderHistory, runners: renderRunners })[view](); }
+route();
+Sim.on(() => {
+  if (down) return;
+  renderDrawer(false);
+  if (performance.now() - last < 1000) return; last = performance.now();
+  const sel = getSelection(); if (sel && String(sel).length) return; // don't wipe a selection
+  renderAll();
+});
+</script>
+</body>
+</html>

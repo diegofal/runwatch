@@ -1,0 +1,59 @@
+version: "3"
+
+# Dev needs Go 1.26 first on PATH. `task ci` is what CI runs.
+
+vars:
+  VERSION:
+    sh: git describe --tags --always --dirty 2>/dev/null || echo dev
+
+tasks:
+  fmt:
+    desc: Format Go code
+    cmds: [gofmt -w cmd internal scripts e2e web]
+
+  fmt-check:
+    desc: Fail if any Go file is not gofmt'ed
+    cmds: [go run scripts/fmtcheck.go cmd internal e2e web]
+
+  vet:
+    cmds: [go vet ./...]
+
+  lint:
+    desc: golangci-lint with the repo config
+    cmds: [golangci-lint run --allow-parallel-runners ./...]
+
+  test:
+    desc: Unit and scenario tests with coverage (they run on a pretend GitHub; nothing real is touched)
+    cmds: [go test -count=1 -coverprofile=coverage.out ./internal/... ./cmd/... ./web/...]
+
+  cover:
+    desc: Per-package coverage gates (90% domain, 85% the rest)
+    deps: [test]
+    cmds: [go run scripts/covergate.go coverage.out]
+
+  e2e:
+    desc: End-to-end tests - build the program, run it as a process, drive it over HTTP and with Chrome
+    cmds: [go test -count=1 -timeout 10m ./e2e]
+
+  build:
+    desc: Build bin/runwatch (tray app; no console window on Windows)
+    cmds:
+      - cmd: go build -trimpath -ldflags "-H windowsgui -X main.version={{.VERSION}}" -o bin/runwatch.exe ./cmd/runwatch
+        platforms: [windows]
+      - cmd: go build -trimpath -ldflags "-X main.version={{.VERSION}}" -o bin/runwatch ./cmd/runwatch
+        platforms: [darwin, linux]
+
+  demo:
+    desc: Run the tray app on made-up runners and a pretend GitHub
+    deps: [build]
+    cmds: ["bin/runwatch{{exeExt}} --demo"]
+
+  ci:
+    desc: Everything CI runs, locally
+    cmds:
+      - task: fmt-check
+      - task: vet
+      - task: lint
+      - task: cover
+      - task: e2e
+      - task: build

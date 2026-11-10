@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Runwatch</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script src="app.js" defer></script>
+<script src="dashboard.js" defer></script>
+</head>
+<body class="dash stale">
+<div id="banners"><div id="bTop"></div><div id="bAction"></div><div class="banner ui" id="errors" hidden></div></div>
+<div class="top">
+  <div class="brand"><h1>Run<span>watch</span></h1><small id="version"></small></div>
+  <div class="facts" id="facts"></div>
+  <div class="tools"><i></i><span id="conn">connecting…</span></div>
+</div>
+<div class="main">
+  <nav id="nav">
+    <a href="#now" data-v="now" data-testid="nav-now">Now <b id="nNow"></b></a>
+    <a href="#queue" data-v="queue" data-testid="nav-queue">Queue <b id="nQueue"></b></a>
+    <a href="#history" data-v="history" data-testid="nav-history">History <b id="nHist"></b></a>
+    <a href="#runners" data-v="runners" data-testid="nav-runners">Runners <b id="nRun"></b></a>
+    <div class="repoF"><div class="h">Repos</div><div id="repoF"></div></div>
+    <div class="note">Stop / re-run → GitHub API.<br>Terminal → this PC's runner logs, live.<br>Start/stop a runner → Windows asks for admin.</div>
+  </nav>
+  <section class="view" id="v-now"></section>
+  <section class="view hide" id="v-queue"></section>
+  <section class="view hide" id="v-history"></section>
+  <section class="view hide" id="v-runners"></section>
+</div>
+<div id="drawerHost"></div>
+</body>
+</html>
