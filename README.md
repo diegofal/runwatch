@@ -36,26 +36,40 @@ arrow); drag it onto the taskbar to keep it visible. The dashboard is at <http:/
 ## Requirements
 
 - Windows 10 or 11 with the WebView2 runtime (part of Windows 11; on Windows 10 it comes with Edge).
-- GitHub Actions self-hosted runners installed on the PC **for repositories** (see [limits](#limits)).
+- GitHub Actions self-hosted runners installed on the PC **for repositories** (see [limits](#limits)), or
+  use the demo above.
 - The [GitHub CLI](https://cli.github.com) logged in (`gh auth login`) with an account that can see each
   repo's Actions. Runwatch asks `gh` for the token; it never stores one. If you use several accounts
   (`gh auth login` more than once), Runwatch picks, per repo, the first account that can read it.
-- To build: Go 1.26 and [Task](https://taskfile.dev). Nothing else; the web pages are plain files.
 
 ## Install
 
+**Download** `runwatch-<version>-windows.zip` from the
+[latest release](https://github.com/diegofal/runwatch/releases/latest), unzip it anywhere, and run
+`runwatch.exe`. Windows may warn that the program is not signed: choose **More info**, then **Run anyway**.
+
+Or **build it** (Go 1.26 and [Task](https://taskfile.dev)):
+
 ```
-git clone <this repository>
+git clone https://github.com/diegofal/runwatch
 cd runwatch
 task build          # bin\runwatch.exe
 bin\runwatch.exe
 ```
 
-Right-click the tray icon and tick **Start at login** to keep it running.
+First start, step by step:
 
-On first start Runwatch finds the runners by itself: it lists the Windows services named `actions.runner.*`
-and reads each one's folder. No configuration is needed for the usual setup. Runners that are not installed
-as services are found by adding their parent folder to `roots` in the [configuration](docs/CONFIGURATION.md).
+1. Make sure `gh auth status` shows an account that can see your repos' Actions.
+2. Run `runwatch.exe`. Find the three-bar icon under the tray's `^` arrow and drag it onto the taskbar.
+3. Left-click it. Your runners should be listed. If a red bar appears instead, it says what could not be
+   read; [Troubleshooting](docs/TROUBLESHOOTING.md) has each message.
+4. Right-click the icon and tick **Start at login** to keep it running.
+
+Runwatch finds the runners by itself: it lists the Windows services named `actions.runner.*` and reads each
+one's folder. No configuration is needed for the usual setup. Runners that are not installed as services are
+found by adding their parent folder to `roots` in the [configuration](docs/CONFIGURATION.md). If some of
+your runners are started and stopped by another tool, list them under `managed` there so Runwatch does not
+offer to.
 
 ## Using it
 

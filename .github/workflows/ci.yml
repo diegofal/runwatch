@@ -2,10 +2,12 @@ name: ci
 
 # `task ci` on Windows, the OS Runwatch ships for: format check, vet, lint,
 # tests with coverage gates, the end-to-end tests (with Chrome) and the build.
+# release.yml reuses this workflow and zips the bin/ artifact it uploads.
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read

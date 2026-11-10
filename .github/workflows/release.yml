@@ -1,0 +1,35 @@
+name: release
+
+# A tag v* runs the whole CI, then attaches runwatch-<tag>-windows.zip
+# (the program and the docs) to the GitHub release of the tag.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  release:
+    needs: ci
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: runwatch-windows
+          path: dist
+      - name: zip
+        run: |
+          cp README.md dist/
+          cp -r docs dist/docs
+          (cd dist && zip -r "../runwatch-${GITHUB_REF_NAME}-windows.zip" .)
+      - name: attach
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --generate-notes runwatch-*.zip
