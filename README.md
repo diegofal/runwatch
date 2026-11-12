@@ -13,7 +13,8 @@ re-run jobs.
 - **Flyout** (left click): the three numbers that matter, one row per repo, and every running job with its
   step, time so far and usual time. Click a job to see its output. Stop asks for confirmation in place.
 - **Dashboard** (in your browser, served on `127.0.0.1`): a one-hour timeline per runner, the queue, the
-  history, the runners, and a full terminal per job.
+  history, the runners, and a full terminal per job. The top bar shows how busy the PC is (CPU and memory),
+  and each runner shows what its own processes use.
 - **Notifications**: only when a job fails or a run has waited more than 45 minutes.
 
 Everything shown is a fact read from GitHub or from the runner's own files. There are no estimates: progress
@@ -97,6 +98,9 @@ More screenshots: [queue](docs/img/dashboard-queue.png), [history](docs/img/dash
 These are facts about GitHub and the runner, not things left undone:
 
 - **Stop is per run**, as above.
+- **A runner's CPU is what its processes were seen to use.** Windows forgets a process's processor time when
+  the process ends, so a process that lives less than half a second between two readings is missed. That
+  time is shown on its own as "short-lived" instead of being guessed onto a runner.
 - **Live output is best effort.** While a job runs, its output is read from the runner's own files. The
   runner writes them a few KB at a time and deletes each block once uploaded, so a quiet step shows nothing
   for a while, and output printed before Runwatch started is not available until the job ends. Once a job

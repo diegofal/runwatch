@@ -107,6 +107,7 @@ never written to disk or logs.
 | 7 | Service start/stop through the admin prompt; `managed` runners are left to their own script | Done; Runwatch shows the reason instead of running another repo's script |
 | 8 | Start at login | Done (tray menu). Packaging and update-from-tray: not built |
 | 9 | Demo mode + pretend GitHub (`internal/fakegh`) | Done; added during the build: it is what the tests, the end-to-end tests and `--demo` run on |
+| 10 | CPU and memory: the PC's, and each runner's own processes | Done 2026-11-12 (`adapters/sysusage`, `domain.Meter`). Read every 500 ms without admin; time of processes too short-lived to be seen is shown on its own, not guessed onto a runner |
 
 Verified on 2026-11-10: `task ci` green (lint clean, coverage gates, 6 end-to-end tests including two real
 Chrome sessions). On this PC, read-only against the real runners: all 9 found without admin, the right

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -28,6 +29,7 @@ type Service struct {
 	Name  string
 	Dir   string // the runner's install folder
 	State domain.ServiceState
+	PID   int // the service's process, 0 when it is not running
 }
 
 // List returns the runner services ("actions.runner.*") with their state.
@@ -57,7 +59,7 @@ func List() ([]Service, error) {
 			errs = append(errs, err)
 			continue
 		}
-		if svc.State, err = state(scm, name); err != nil {
+		if svc.State, svc.PID, err = state(scm, name); err != nil {
 			errs = append(errs, err)
 		}
 		out = append(out, svc)
@@ -85,24 +87,25 @@ func installDir(name string) (string, error) {
 	return filepath.Dir(filepath.Dir(image)), nil
 }
 
-func state(scm windows.Handle, name string) (domain.ServiceState, error) {
+func state(scm windows.Handle, name string) (domain.ServiceState, int, error) {
 	ptr, err := windows.UTF16PtrFromString(name)
 	if err != nil {
-		return domain.ServiceUnknown, fmt.Errorf("service %s: %w", name, err)
+		return domain.ServiceUnknown, 0, fmt.Errorf("service %s: %w", name, err)
 	}
 	h, err := windows.OpenService(scm, ptr, windows.SERVICE_QUERY_STATUS)
 	if err != nil {
-		return domain.ServiceUnknown, fmt.Errorf("service %s: %w", name, err)
+		return domain.ServiceUnknown, 0, fmt.Errorf("service %s: %w", name, err)
 	}
 	defer windows.CloseServiceHandle(h) //nolint:errcheck // read-only handle
-	var st windows.SERVICE_STATUS
-	if err := windows.QueryServiceStatus(h, &st); err != nil {
-		return domain.ServiceUnknown, fmt.Errorf("service %s: %w", name, err)
+	var st windows.SERVICE_STATUS_PROCESS
+	var needed uint32
+	if err := windows.QueryServiceStatusEx(h, windows.SC_STATUS_PROCESS_INFO, (*byte)(unsafe.Pointer(&st)), uint32(unsafe.Sizeof(st)), &needed); err != nil {
+		return domain.ServiceUnknown, 0, fmt.Errorf("service %s: %w", name, err)
 	}
 	if st.CurrentState == windows.SERVICE_STOPPED || st.CurrentState == windows.SERVICE_STOP_PENDING {
-		return domain.ServiceStopped, nil
+		return domain.ServiceStopped, 0, nil
 	}
-	return domain.ServiceRunning, nil
+	return domain.ServiceRunning, int(st.ProcessId), nil
 }
 
 // Control starts or stops a runner service. Windows shows its admin prompt;

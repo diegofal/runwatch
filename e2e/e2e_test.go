@@ -140,7 +140,17 @@ type state struct {
 		JobName string `json:"jobName"`
 		JobID   int64  `json:"jobId"`
 		Managed string `json:"managed"`
+		Usage   *struct {
+			CPU   float64 `json:"cpu"`
+			Mem   int64   `json:"mem"`
+			Procs int     `json:"procs"`
+		} `json:"usage"`
 	} `json:"runners"`
+	Usage *struct {
+		Cores   int     `json:"cores"`
+		CPU     float64 `json:"cpu"`
+		Runners float64 `json:"runners"`
+	} `json:"usage"`
 	Active  []job `json:"active"`
 	Recent  []job `json:"recent"`
 	Summary struct {
@@ -516,6 +526,15 @@ func TestTheDemoRunsOnItsOwn(t *testing.T) {
 	}
 	if s.Summary.OldestWait < 50*60 {
 		t.Errorf("the demo's queue should show a long wait: %+v", s.Summary)
+	}
+	// The demo's pretend processors: every runner is measured, and the ones with a job use CPU.
+	s = a.until("the demo's CPU numbers", func(s state) bool {
+		return s.Usage != nil && s.Usage.Cores == 16 && s.Usage.Runners >= 5 && s.Usage.CPU > s.Usage.Runners
+	})
+	for _, r := range s.Runners {
+		if r.Usage == nil || r.Usage.Procs != 1 || r.Usage.Mem == 0 {
+			t.Errorf("runner %s usage: %+v", r.Name, r.Usage)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(dataDir, "history.jsonl")); err == nil {
 		t.Error("the demo wrote into the data folder's history; it must keep its own")

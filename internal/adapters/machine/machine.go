@@ -60,7 +60,7 @@ func (m *Machine) Runners(context.Context) ([]domain.Runner, error) {
 			r.Problem = err.Error()
 		}
 		if s, ok := byDir[strings.ToLower(dir)]; ok {
-			r.Service, r.State = s.Name, s.State
+			r.Service, r.State, r.PID = s.Name, s.State, s.PID
 		}
 		runners = append(runners, r)
 	}

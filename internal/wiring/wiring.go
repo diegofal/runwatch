@@ -22,8 +22,10 @@ import (
 	"runwatch/internal/adapters/history"
 	"runwatch/internal/adapters/machine"
 	"runwatch/internal/adapters/runnerfs"
+	"runwatch/internal/adapters/sysusage"
 	"runwatch/internal/config"
 	"runwatch/internal/core"
+	"runwatch/internal/domain"
 	"runwatch/internal/fakegh"
 	"runwatch/internal/server"
 	"runwatch/web"
@@ -103,9 +105,21 @@ func Start(ctx context.Context, o Options) (*App, error) {
 	if !cfg.Notifications {
 		o.Notifier = nil
 	}
+	// CPU and memory are read from the real PC only where its real runner
+	// services are looked at: never in the demo or in a test.
+	var pc core.Machine = mach
+	var usage func(context.Context) (domain.Reading, error)
+	switch {
+	case o.Demo:
+		demo := newDemoPC(mach)
+		pc, usage = demo, demo.Read
+	case cfg.Services:
+		usage = sysusage.Read
+	}
 	a.Watcher = core.New(core.Options{
 		GitHub:  github.New(cfg.GitHubAPI, tokens, nil),
-		Machine: mach,
+		Machine: pc,
+		Usage:   usage,
 		History: store,
 		NewTail: func(dir, plan string, since time.Time) core.LogTail { return runnerfs.NewTail(dir, plan, since) },
 		Logf:    a.Logf, Managed: cfg.Managed, Notifier: o.Notifier,

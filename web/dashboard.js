@@ -18,6 +18,25 @@
   const drift = () => Math.max(0, (RW.now() - t(S().at)) / 1000);
 
   // ---------- top ----------
+  // ---------- CPU AND MEMORY ----------
+  const cores = v => n(v).toFixed(1);
+  // A runner's processes: "1.3 cores · 600 MB", '' when it is not measured.
+  function usageText(r) {
+    return r.usage ? `${cores(r.usage.cpu)} cores · ${RW.fmtBytes(r.usage.mem)}` : '';
+  }
+  function usageFacts(st) {
+    const u = st.usage;
+    if (!u || !n(u.cores)) return '';
+    // A reading that stopped arriving is said to be old, not shown as current.
+    const old = t(st.at) - t(u.at) > 15e3 ? ` · as of ${clock(t(u.at))}` : '';
+    const other = Math.max(0, n(u.cpu) - n(u.runners) - n(u.unassigned));
+    const pct = Math.min(100, Math.round(n(u.cpu) / n(u.cores) * 100));
+    const tip = `Processors busy, averaged over the last ${Math.round(n(u.windowSec))} s, out of ${n(u.cores)}. "Runners" is the runner services and everything started under them. "Short-lived" is busy time of processes that started and ended between two readings (2 s apart): it cannot be given to a runner or to anything else.`;
+    const mem = st.runners.reduce((a, r) => a + (r.usage ? n(r.usage.mem) : 0), 0);
+    return `<div class="fact ${old ? 'old' : ''}" title="${esc(tip)}"><div class="k">CPU · ${n(u.cores)} cores</div><div class="v ${pct >= 90 ? 'wait' : ''}" data-testid="fact-cpu">${pct}<small>%${old}</small></div><div class="s" data-testid="fact-cpu-split">runners ${cores(u.runners)} · other ${cores(other)} · short-lived ${cores(u.unassigned)}</div></div>
+      <div class="fact ${old ? 'old' : ''}"><div class="k">Memory</div><div class="v" data-testid="fact-mem">${(n(u.memUsed) / 2 ** 30).toFixed(0)}<small> / ${(n(u.memTotal) / 2 ** 30).toFixed(0)} GB</small></div><div class="s">runners ${RW.fmtBytes(mem)}</div></div>`;
+  }
+
   function renderTop() {
     const st = S(), s = st.summary, now = RW.now();
     const total = n(s.total), busy = n(s.busy), online = n(s.online), waiting = n(s.waiting);
@@ -31,7 +50,7 @@
       <div class="fact"><div class="k">Waiting</div><div class="v ${waiting ? 'wait' : ''}" data-testid="fact-waiting">${waiting}</div><div class="s">jobs not started</div></div>
       <div class="fact"><div class="k">Oldest wait</div><div class="v" data-testid="fact-oldest">${waiting ? F(n(s.oldestWaitSec) + drift()) : '—'}</div><div class="s">${waiting && firstQ ? esc(short(firstQ.repo)) : '&nbsp;'}</div></div>
       <div class="fact"><div class="k">Failed · 1 h</div><div class="v ${n(s.failedHour) ? 'bad' : ''}" data-testid="fact-failed">${n(s.failedHour)}</div><div class="s">jobs</div></div>
-      <div class="fact"><div class="k">Cancelled runs · 2 h</div><div class="v">${FS(wasted)}</div><div class="s">${all > 0 ? Math.round(wasted / all * 100) + '% of runner time' : 'no runner time yet'}</div></div>`);
+      <div class="fact"><div class="k">Cancelled runs · 2 h</div><div class="v">${FS(wasted)}</div><div class="s">${all > 0 ? Math.round(wasted / all * 100) + '% of runner time' : 'no runner time yet'}</div></div>${usageFacts(st)}`);
     $('#nNow').textContent = busy; $('#nQueue').textContent = waiting; $('#nRun').textContent = total;
     $('#nHist').textContent = st.recent.length;
     $('#version').textContent = st.version ? 'version ' + st.version : '';
@@ -80,7 +99,7 @@
         cur = `<div class="cur" data-testid="lane-current"><div class="b ${r.state === 'stopped' ? 'bad' : ''}">${txt}</div>${r.problem ? `<div class="b bad" title="${esc(r.problem)}">${esc(r.problem)}</div>` : ''}</div>`;
       }
       const dot = r.state === 'stopped' ? 'var(--bad)' : j ? 'var(--run)' : r.state === 'running' ? 'var(--ok)' : 'var(--faint)';
-      return `<div class="lane" data-testid="lane" data-runner="${esc(r.name)}"><div class="who"><span class="n"><i style="background:${dot}"></i>${esc(r.name)}</span><span class="r" title="${esc(r.repo)}">${esc(r.repo)}</span></div>
+      return `<div class="lane" data-testid="lane" data-runner="${esc(r.name)}"><div class="who"><span class="n"><i style="background:${dot}"></i>${esc(r.name)}</span><span class="r" title="${esc(r.repo)}">${esc(r.repo)}</span>${r.usage ? `<span class="u" data-testid="lane-usage" title="what this runner's processes use now">${usageText(r)}</span>` : ''}</div>
         <div class="track">${segs}${live}<div class="nowline"></div></div>${cur}</div>`;
     }).join('');
     const ticks = [60, 50, 40, 30, 20, 10, 0].map((m, i) => `<span style="left:${(i / 6 * 100).toFixed(2)}%">${m ? '−' + m + 'm' : 'now'}</span>`).join('');
@@ -194,6 +213,7 @@
       return `<div class="rc" data-testid="runner-card" data-runner="${esc(r.name)}"><div class="h"><b>${esc(r.name)}</b><span class="rp" style="color:${color(r.repo)}" title="${esc(r.repo)}">${esc(r.repo)}</span><span class="st ${state[0]}">${state[1]}</span></div>
         <div class="kv"><span>Now</span><span>${j ? esc(j.name) + ' · ' + FS(RW.ran(j)) : '—'}</span>
         <span>Busy · last 2 h</span><span>${Math.min(100, Math.round(busyMs / H2 * 100))}% · ${plural(mine.length + (j ? 1 : 0), 'job')}</span>
+        <span>CPU · memory now</span><span data-testid="runner-usage">${r.usage ? `${usageText(r)} · ${n(r.usage.procs)} process${n(r.usage.procs) === 1 ? '' : 'es'}` : 'not measured'}</span>
         <span>Logs (_diag)</span><span>${measuring ? 'measuring…' : RW.fmtBytes(r.diagBytes)}</span><span>Checkouts (_work)</span><span>${measuring ? 'measuring…' : RW.fmtBytes(r.workBytes)}</span>
         <span>Service</span><span>${r.service ? esc(r.service) : 'not installed as a service'}</span>
         <span>Folder</span><span>${esc(r.dir || '—')}</span></div>

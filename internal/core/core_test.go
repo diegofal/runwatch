@@ -670,3 +670,88 @@ func TestRunKeepsTheSnapshotFreshAndTellsSubscribers(t *testing.T) {
 		t.Error("a scan must keep the measured sizes")
 	}
 }
+
+// withPIDs gives each runner a service process, as a running service has.
+type withPIDs struct {
+	Machine
+	pids map[string]int
+}
+
+func (m withPIDs) Runners(ctx context.Context) ([]domain.Runner, error) {
+	runners, err := m.Machine.Runners(ctx)
+	for i := range runners {
+		runners[i].PID = m.pids[runners[i].Name]
+	}
+	return runners, err
+}
+
+func TestCPUAndMemoryPerRunnerAndForThePC(t *testing.T) {
+	r := newRig(t, nil)
+	ctx := context.Background()
+	scan := func() domain.Snapshot {
+		r.w.SampleUsage(ctx)
+		r.w.ScanLocal(ctx)
+		return r.w.Snapshot()
+	}
+	if s := scan(); s.Usage != nil || s.Runners[0].Usage != nil {
+		t.Fatalf("nothing is measured unless a reader is given: %+v", s.Usage)
+	}
+
+	born := r.now.Add(-time.Hour)
+	var used time.Duration
+	var fail error
+	r.w.o.Machine = withPIDs{Machine: r.w.o.Machine, pids: map[string]int{"app-1": 100, "app-2": 200}}
+	r.w.o.Usage = func(context.Context) (domain.Reading, error) {
+		if fail != nil {
+			return domain.Reading{}, fail
+		}
+		return domain.Reading{At: r.now, Cores: 8, Busy: 2 * used, MemTotal: 64 << 30, MemUsed: 8 << 30, Procs: []domain.Proc{
+			{PID: 100, Parent: 4, Created: born, Mem: 50 << 20},
+			{PID: 101, Parent: 100, Created: born, CPU: used, Mem: 250 << 20},
+			{PID: 200, Parent: 4, Created: born, Mem: 50 << 20},
+		}}, nil
+	}
+	r.w.ScanLocal(ctx) // the runners' service processes are known from here on
+	if s := scan(); s.Usage != nil {
+		t.Fatalf("one reading gives no rate yet: %+v", s.Usage)
+	}
+	r.now, used = r.now.Add(2*time.Second), 3*time.Second
+	s := scan()
+	if s.Usage == nil || s.Usage.CPU != 3 || s.Usage.Runners != 1.5 || s.Usage.Cores != 8 || s.Usage.MemUsed != 8<<30 {
+		t.Fatalf("the PC: %+v", s.Usage)
+	}
+	by := map[string]*domain.RunnerUsage{}
+	for _, rn := range s.Runners {
+		by[rn.Name] = rn.Usage
+	}
+	if u := by["app-1"]; u == nil || u.CPU != 1.5 || u.Mem != 300<<20 || u.Procs != 2 {
+		t.Errorf("app-1: %+v", u)
+	}
+	if u := by["app-2"]; u == nil || u.CPU != 0 || u.Procs != 1 {
+		t.Errorf("app-2: %+v", u)
+	}
+	if by["billing-1"] != nil {
+		t.Errorf("a runner with no service process is not measured: %+v", by["billing-1"])
+	}
+
+	// The read fails: the problem is shown, the PC's last numbers stay with
+	// their time, and no runner's number is shown as current.
+	fail = errors.New("list the processes: refused")
+	measured := r.now
+	r.now = r.now.Add(2 * time.Second)
+	scan()
+	r.now = r.now.Add(2 * time.Second)
+	fail = errors.New("list the processes: still refused")
+	s = scan()
+	if len(s.Problems) != 1 || s.Problems[0].Source != "this PC's CPU" || s.Problems[0].Text != "list the processes: still refused" || !s.Problems[0].Since.Equal(measured.Add(2*time.Second)) {
+		t.Fatalf("problems: %+v", s.Problems)
+	}
+	if s.Usage == nil || !s.Usage.At.Equal(measured) || s.Runners[1].Usage != nil {
+		t.Errorf("after a failed read: PC %+v, runner %+v", s.Usage, s.Runners[1].Usage)
+	}
+	fail = nil
+	r.now = r.now.Add(2 * time.Second)
+	if s = scan(); len(s.Problems) != 0 || !s.Usage.At.Equal(r.now) {
+		t.Errorf("after the read works again: %+v %+v", s.Problems, s.Usage)
+	}
+}

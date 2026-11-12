@@ -16,6 +16,7 @@ type Service struct {
 	Name  string
 	Dir   string
 	State domain.ServiceState
+	PID   int
 }
 
 // List returns no services on this OS.

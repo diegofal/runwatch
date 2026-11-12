@@ -30,11 +30,13 @@ const (
 
 // Runner is one self-hosted runner installed on this machine.
 type Runner struct {
-	Name    string       `json:"name"`    // the name GitHub knows it by (.runner agentName)
-	Dir     string       `json:"dir"`     // its install folder
-	Repo    string       `json:"repo"`    // owner/repo it is registered to
-	Service string       `json:"service"` // OS service name, "" when none
-	State   ServiceState `json:"state"`
+	Name    string `json:"name"`    // the name GitHub knows it by (.runner agentName)
+	Dir     string `json:"dir"`     // its install folder
+	Repo    string `json:"repo"`    // owner/repo it is registered to
+	Service string `json:"service"` // OS service name, "" when none
+	// PID is the service's process while it runs, 0 otherwise.
+	PID   int          `json:"-"`
+	State ServiceState `json:"state"`
 	// Busy, JobName, JobStarted and PlanID come from the runner's own log,
 	// so they are known before GitHub's API catches up.
 	Busy       bool      `json:"busy"`
@@ -48,6 +50,9 @@ type Runner struct {
 	Labels    []string `json:"labels,omitempty"`
 	DiagBytes int64    `json:"diagBytes"`
 	WorkBytes int64    `json:"workBytes"`
+	// Usage is what the runner's processes use now; nil when it is not
+	// measured (no running service, or no measuring on this PC).
+	Usage *RunnerUsage `json:"usage,omitempty"`
 	// Managed is why Runwatch does not start or stop this service ("" = it does).
 	Managed string `json:"managed,omitempty"`
 	// Problem is why this runner's own files could not be read ("" = they were).
@@ -174,6 +179,8 @@ type Snapshot struct {
 	Active  []Job     `json:"active"` // queued and in progress, oldest queued first
 	Recent  []Job     `json:"recent"` // finished, newest first
 	Summary Summary   `json:"summary"`
+	// Usage is how busy this PC is; nil when it is not measured.
+	Usage *Usage `json:"usage,omitempty"`
 	// Problems lists every read that is failing right now.
 	Problems []Problem `json:"problems"`
 	Events   []Event   `json:"events"`

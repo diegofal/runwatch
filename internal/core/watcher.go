@@ -61,8 +61,11 @@ type Options struct {
 	// NewTail follows the job of plan started at since in a runner folder.
 	NewTail  func(dir, plan string, since time.Time) LogTail
 	Notifier Notifier // nil = no notifications
-	Now      func() time.Time
-	Logf     func(format string, args ...any)
+	// Usage reads this PC's processors, memory and processes; nil = CPU and
+	// memory are not measured.
+	Usage func(ctx context.Context) (domain.Reading, error)
+	Now   func() time.Time
+	Logf  func(format string, args ...any)
 	// Managed maps a glob over a runner's folder name to the reason its
 	// service is started and stopped elsewhere.
 	Managed map[string]string
@@ -80,6 +83,11 @@ const (
 	// localEvery and tailEvery pace the reads of the runners' own files.
 	localEvery = 2 * time.Second
 	tailEvery  = 300 * time.Millisecond
+	// usageEvery paces the reads of the PC's processes. A process that
+	// starts and ends between two reads is never seen, and tests start many
+	// that live under a second, so this is as short as its cost allows
+	// (one read takes a few hundredths of a second of one processor).
+	usageEvery = 500 * time.Millisecond
 	// labelsEvery is how often a repo's runner labels are read again: they
 	// change only when a runner is reconfigured. labelsRetry is the pause
 	// after a refused or failed read.
@@ -95,17 +103,23 @@ type Watcher struct {
 	mu       sync.Mutex
 	runners  []domain.Runner
 	localErr *domain.Problem
-	repos    map[string]*repoState
-	events   []domain.Event
-	snap     domain.Snapshot
-	subs     map[chan struct{}]struct{}
-	live     map[string]*liveLog // by runner name
-	doneLogs map[string][]domain.LogLine
-	doneKeys []string
-	alerted  map[string]bool
-	usual    map[string]int
-	usualLen int
-	kick     chan struct{}
+	meter    domain.Meter
+	usage    *domain.Usage
+	// runnerUsage is each measured runner's usage by name; nil while the
+	// read fails.
+	runnerUsage map[string]domain.RunnerUsage
+	usageErr    *domain.Problem
+	repos       map[string]*repoState
+	events      []domain.Event
+	snap        domain.Snapshot
+	subs        map[chan struct{}]struct{}
+	live        map[string]*liveLog // by runner name
+	doneLogs    map[string][]domain.LogLine
+	doneKeys    []string
+	alerted     map[string]bool
+	usual       map[string]int
+	usualLen    int
+	kick        chan struct{}
 }
 
 type repoState struct {
@@ -177,6 +191,22 @@ func (w *Watcher) Run(ctx context.Context) {
 	defer local.Stop()
 	tail := time.NewTicker(tailEvery)
 	defer tail.Stop()
+	// On its own, so that a slow answer from GitHub never leaves a gap in
+	// the readings: a gap is processor time nobody can be given.
+	var sampler sync.WaitGroup
+	defer sampler.Wait()
+	sampler.Go(func() {
+		usage := time.NewTicker(usageEvery)
+		defer usage.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-usage.C:
+				w.SampleUsage(ctx)
+			}
+		}
+	})
 	nextPoll := w.o.Now().Add(w.pollEvery())
 	for {
 		select {
@@ -251,6 +281,39 @@ func (w *Watcher) ScanLocal(ctx context.Context) bool {
 	return changed
 }
 
+// SampleUsage reads this PC's processors, memory and processes and works
+// out the PC's and each runner's CPU and memory. The next rebuild of the
+// Snapshot shows them. A failed read keeps the PC's last numbers, with
+// their time, beside the problem; the runners' are dropped, so none is
+// shown as current.
+func (w *Watcher) SampleUsage(ctx context.Context) {
+	if w.o.Usage == nil {
+		return
+	}
+	reading, err := w.o.Usage(ctx)
+	now := w.o.Now()
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if err != nil {
+		if w.usageErr == nil {
+			w.usageErr = &domain.Problem{Source: "this PC's CPU", Since: now}
+		}
+		w.usageErr.Text = err.Error()
+		w.runnerUsage = nil
+		return
+	}
+	w.usageErr = nil
+	roots := map[int]string{}
+	for _, r := range w.runners {
+		if r.PID > 0 {
+			roots[r.PID] = r.Name
+		}
+	}
+	if usage, per, ok := w.meter.Measure(reading, roots); ok {
+		w.usage, w.runnerUsage = &usage, per
+	}
+}
+
 // SetSizes records a runner's measured folder sizes.
 func (w *Watcher) SetSizes(name string, diag, work int64) {
 	w.mu.Lock()
@@ -287,16 +350,10 @@ func (w *Watcher) rebuildLocked() {
 	}
 
 	active, problems := w.activeLocked(usual)
-	runners := append([]domain.Runner(nil), w.runners...)
-	for i := range runners {
-		r := &runners[i]
+	runners := w.shownRunnersLocked(active)
+	for _, r := range runners {
 		if r.Problem != "" {
 			problems = append(problems, domain.Problem{Source: "runner " + r.Name, Text: r.Problem, Since: now})
-		}
-		for _, j := range active {
-			if j.Status == domain.StatusInProgress && j.Runner == r.Name {
-				r.JobID = j.ID
-			}
 		}
 	}
 
@@ -324,6 +381,7 @@ func (w *Watcher) rebuildLocked() {
 		At: now, Runners: runners, Active: active, Recent: recent, Problems: problems,
 		Events:  append([]domain.Event{}, w.events...),
 		Summary: domain.Summarize(runners, active, recent, now),
+		Usage:   w.usage,
 	}
 	w.notifyLocked()
 	for ch := range w.subs {
@@ -334,6 +392,24 @@ func (w *Watcher) rebuildLocked() {
 	}
 }
 
+// shownRunnersLocked is the runners as the Snapshot shows them: each with
+// what its processes use and the GitHub job it is running.
+func (w *Watcher) shownRunnersLocked(active []domain.Job) []domain.Runner {
+	runners := append([]domain.Runner(nil), w.runners...)
+	for i := range runners {
+		r := &runners[i]
+		if u, ok := w.runnerUsage[r.Name]; ok {
+			r.Usage = &u
+		}
+		for _, j := range active {
+			if j.Status == domain.StatusInProgress && j.Runner == r.Name {
+				r.JobID = j.ID
+			}
+		}
+	}
+	return runners
+}
+
 // activeLocked gathers this machine's unfinished jobs from every repo,
 // oldest queued first, and the problems of the reads behind them.
 func (w *Watcher) activeLocked(usual func(*domain.Job)) ([]domain.Job, []domain.Problem) {
@@ -341,6 +417,9 @@ func (w *Watcher) activeLocked(usual func(*domain.Job)) ([]domain.Job, []domain.
 	problems := []domain.Problem{}
 	if w.localErr != nil {
 		problems = append(problems, *w.localErr)
+	}
+	if w.usageErr != nil {
+		problems = append(problems, *w.usageErr)
 	}
 	repoNames := make([]string, 0, len(w.repos))
 	for name := range w.repos {

@@ -38,6 +38,8 @@ One Go program. It reads two sources, joins them into one snapshot, and two fron
 | Output of a finished job | `GET /repos/{repo}/actions/jobs/{id}/logs` | Complete, unlike the local blocks |
 | "Usual" time | Median run time of the newest 20 successful jobs of the same repo and name in `history.jsonl` | A fact about the past, not an estimate |
 | Folder sizes | A walk of `_diag` and `_work`, every 10 minutes | Slow on big checkouts, so done rarely |
+| CPU and memory of the PC | `GetSystemTimes` and `GlobalMemoryStatusEx`, every 500 ms; shown as an average over the last 10 s | Exact, no admin |
+| CPU and memory of a runner | The process list (`NtQuerySystemInformation`), every 500 ms: the service's process (its PID comes from the service manager) and everything started under it | One call lists every process with its parent and processor time, without admin and without opening a process; see the limits below |
 
 Three details of the GitHub API that shape the code:
 
@@ -60,6 +62,22 @@ when a runner is reconfigured. That call needs an account that administers the r
 the rule falls back to the one label every self-hosted runner is known to carry (a waiting job is ours if it
 asks for `self-hosted`), and a problem line says so, because jobs asking only for a custom label are then
 missed. The read is tried again every ten minutes.
+
+### CPU per runner and its limits
+
+Windows keeps a process's processor time only while the process lives, and does not add a finished child's
+time to its parent. So `domain.Meter` adds up what each process used between two readings and credits it to
+the runner the process descends from. It remembers each process's runner, so a process stays with its runner
+after the shell that started it has ended.
+
+A process that starts and ends between two readings is never seen. Tests start many of those, so the readings
+are 500 ms apart (one takes a few hundredths of a second of one processor) and the gap is shown instead of
+hidden: `Usage.Unassigned` is the PC's busy time that no process seen in two readings accounts for (it also
+holds the system's interrupt handling). The dashboard shows it as "short-lived". A runner's number is
+therefore what its processes were seen to use: the true figure is that or more, never less.
+
+Nothing is measured for a runner that is not a running service, in a test, or with `services` off. The demo
+has pretend processors (`wiring/demo-usage.go`).
 
 ### The live output and its limits
 
@@ -137,7 +155,8 @@ internal/domain         types and pure rules (no I/O, no imports from this modul
 internal/core           the Watcher. Imports only domain; its collaborators are interfaces
 internal/adapters/
   runnerfs              a runner's folder: .runner, Runner log, pages tail, sizes
-  winsvc                runner services: list and state (no admin), start/stop (UAC)
+  winsvc                runner services: list, state and process (no admin), start/stop (UAC)
+  sysusage              the PC's processor time, memory and process list
   machine               core.Machine = winsvc + runnerfs
   github                the Actions API client and the token lookup through gh
   history               history.jsonl
